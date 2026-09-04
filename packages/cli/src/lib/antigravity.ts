@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { copyFile, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -22,6 +22,7 @@ const execFileAsync = promisify(execFile);
 const textDecoder = new TextDecoder();
 
 const ANTIGRAVITY_CONFIG_DIR_ENV = "ANTIGRAVITY_CONFIG_DIR";
+const ANTIGRAVITY_CONVERSATIONS_DIR_ENV = "ANTIGRAVITY_CONVERSATIONS_DIR";
 const ANTIGRAVITY_LOG_PATH_ENV = "ANTIGRAVITY_LOG_PATH";
 const ANTIGRAVITY_LS_PID_ENV = "ANTIGRAVITY_LS_PID";
 const ANTIGRAVITY_LS_HTTP_PORT_ENV = "ANTIGRAVITY_LS_HTTP_PORT";
@@ -39,7 +40,7 @@ const ANTIGRAVITY_TRAJECTORY_SUMMARY_KEYS = [
   "unifiedStateSync.trajectorySummaries",
 ] as const;
 
-const DEFAULT_MAX_TRAJECTORIES = 200;
+const DEFAULT_MAX_TRAJECTORIES = 1_000;
 const DEFAULT_MAX_STEP_PAGES = 100;
 const REQUEST_TIMEOUT_MS = 3_500;
 const CONNECTION_CACHE_MS = 10_000;
@@ -149,49 +150,89 @@ let cachedConnectionInfo:
   | { value: AntigravityConnectionInfo | null; expiresAt: number }
   | null = null;
 
-function createEmptySummary(end: Date): UsageSummary {
-  return createUsageSummary(
-    "antigravity",
-    new Map(),
-    new Map(),
-    new Map(),
-    end,
-  );
-}
-
-function getAntigravityConfigRoot() {
+function getAntigravityConfigRoots(): string[] {
   const configuredRoot = process.env[ANTIGRAVITY_CONFIG_DIR_ENV]?.trim();
 
   if (configuredRoot) {
-    return resolve(configuredRoot);
+    return [resolve(configuredRoot)];
   }
+
+  const roots: string[] = [];
+  const home = homedir();
 
   if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", "Antigravity");
-  }
+    const appSupport = join(home, "Library", "Application Support");
 
-  if (process.platform === "win32") {
+    roots.push(
+      join(appSupport, "Antigravity IDE"),
+      join(appSupport, "Antigravity"),
+    );
+  } else if (process.platform === "win32") {
     const appData =
-      process.env.APPDATA?.trim() || join(homedir(), "AppData", "Roaming");
+      process.env.APPDATA?.trim() || join(home, "AppData", "Roaming");
 
-    return join(appData, "Antigravity");
+    roots.push(
+      join(appData, "Antigravity IDE"),
+      join(appData, "Antigravity"),
+    );
+  } else {
+    const xdgConfigHome =
+      process.env.XDG_CONFIG_HOME?.trim() || join(home, ".config");
+
+    roots.push(
+      join(xdgConfigHome, "Antigravity IDE"),
+      join(xdgConfigHome, "Antigravity"),
+      join(home, ".config", "Antigravity IDE"),
+      join(home, ".config", "Antigravity"),
+    );
   }
 
-  const xdgConfigHome =
-    process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), ".config");
+  roots.push(
+    join(home, ".gemini", "antigravity-ide"),
+    join(home, ".gemini", "antigravity"),
+  );
 
-  return join(xdgConfigHome, "Antigravity");
+  return [...new Set(roots)];
 }
 
-function getAntigravityLogsRoot() {
-  return join(getAntigravityConfigRoot(), "logs");
+function getAntigravityConversationDirectories(): string[] {
+  const explicitDir = process.env[ANTIGRAVITY_CONVERSATIONS_DIR_ENV]?.trim();
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+  const pushDir = (dirPath: string) => {
+    const resolved = resolve(dirPath);
+
+    if (!seen.has(resolved) && existsSync(resolved)) {
+      seen.add(resolved);
+      dirs.push(resolved);
+    }
+  };
+
+  if (explicitDir) {
+    pushDir(explicitDir);
+
+    return dirs;
+  }
+
+  const home = homedir();
+  const geminiRoot = join(home, ".gemini");
+
+  pushDir(join(geminiRoot, "antigravity-ide", "conversations"));
+  pushDir(join(geminiRoot, "antigravity", "conversations"));
+  pushDir(join(geminiRoot, "antigravity-backup", "conversations"));
+
+  for (const root of getAntigravityConfigRoots()) {
+    pushDir(join(root, "conversations"));
+  }
+
+  return dirs;
 }
 
-function getAntigravityDefaultStateDbPath() {
-  return join(getAntigravityConfigRoot(), ANTIGRAVITY_STATE_DB_RELATIVE_PATH);
+function getAntigravityLogsRoots(): string[] {
+  return getAntigravityConfigRoots().map((root) => join(root, "logs"));
 }
 
-function getAntigravityStateDbCandidates() {
+function getAntigravityStateDbCandidates(): string[] {
   const explicitDbPath = process.env[ANTIGRAVITY_STATE_DB_PATH_ENV]?.trim();
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -219,23 +260,11 @@ function getAntigravityStateDbCandidates() {
     return candidates;
   }
 
-  pushCandidate(getAntigravityDefaultStateDbPath());
-
-  return candidates;
-}
-
-function getAntigravityStateDbPath() {
-  const seen = new Set<string>();
-
-  for (const candidate of getAntigravityStateDbCandidates()) {
-    if (!seen.has(candidate) && existsSync(candidate)) {
-      return candidate;
-    }
-
-    seen.add(candidate);
+  for (const root of getAntigravityConfigRoots()) {
+    pushCandidate(join(root, ANTIGRAVITY_STATE_DB_RELATIVE_PATH));
   }
 
-  return null;
+  return candidates;
 }
 
 function normalizeAntigravityDatabaseValue(value: unknown) {
@@ -290,7 +319,7 @@ async function withAntigravityStateSnapshot<T>(
   callback: (snapshotPath: string) => Promise<T>,
 ) {
   const snapshotDir = await mkdtemp(join(tmpdir(), "slopmeter-antigravity-"));
-  const snapshotPath = join(snapshotDir, "state.vscdb");
+  const snapshotPath = join(snapshotDir, basename(databasePath));
 
   await copyFile(databasePath, snapshotPath);
 
@@ -352,30 +381,39 @@ function parseStateTrajectoryIds(rawEncodedSummaries: string[]) {
 }
 
 async function getStateTrajectoryIds() {
-  const databasePath = getAntigravityStateDbPath();
+  const candidates = getAntigravityStateDbCandidates();
+  const allSummaries: string[] = [];
 
-  if (!databasePath) {
-    return [] as string[];
-  }
-
-  const readValues = (path: string) =>
-    readAntigravityTrajectorySummaryValuesFromDatabase(path);
-  let rawEncodedSummaries: string[];
-
-  try {
-    rawEncodedSummaries = readValues(databasePath);
-  } catch (error) {
-    if (!isSqliteLockedError(error)) {
-      throw error;
+  for (const databasePath of candidates) {
+    if (!existsSync(databasePath)) {
+      continue;
     }
 
-    rawEncodedSummaries = await withAntigravityStateSnapshot(
-      databasePath,
-      async (snapshotPath) => readValues(snapshotPath),
-    );
+    const readValues = (path: string) =>
+      readAntigravityTrajectorySummaryValuesFromDatabase(path);
+    let rawEncodedSummaries: string[];
+
+    try {
+      rawEncodedSummaries = readValues(databasePath);
+    } catch (error) {
+      if (!isSqliteLockedError(error)) {
+        continue;
+      }
+
+      try {
+        rawEncodedSummaries = await withAntigravityStateSnapshot(
+          databasePath,
+          async (snapshotPath) => readValues(snapshotPath),
+        );
+      } catch {
+        continue;
+      }
+    }
+
+    allSummaries.push(...rawEncodedSummaries);
   }
 
-  return parseStateTrajectoryIds(rawEncodedSummaries);
+  return parseStateTrajectoryIds(allSummaries);
 }
 
 function getExplicitLogPath() {
@@ -450,11 +488,23 @@ async function getRecentAntigravityLogFiles() {
     return existsSync(explicitLogPath) ? [explicitLogPath] : [];
   }
 
-  const files = await listFilesRecursive(getAntigravityLogsRoot(), ".log");
+  const logFiles: string[] = [];
 
-  return files
-    .filter((filePath) => basename(filePath).toLowerCase() === "antigravity.log")
-    .sort((left, right) => right.localeCompare(left));
+  for (const logsRoot of getAntigravityLogsRoots()) {
+    if (!existsSync(logsRoot)) {
+      continue;
+    }
+
+    const files = await listFilesRecursive(logsRoot, ".log");
+
+    for (const filePath of files) {
+      if (basename(filePath).toLowerCase() === "antigravity.log") {
+        logFiles.push(filePath);
+      }
+    }
+  }
+
+  return logFiles.sort((left, right) => right.localeCompare(left));
 }
 
 async function getLatestAntigravityLaunchRecord() {
@@ -606,7 +656,7 @@ function parseUnixLanguageServerProcesses(content: string) {
     }
 
     const pid = Number(match[1]);
-    const commandLine = match[2]?.trim() ?? "";
+    const commandLine = match[2].trim();
 
     if (
       !Number.isInteger(pid) ||
@@ -1069,7 +1119,11 @@ function formatAntigravityModelName(rawName: string) {
     const token = rawTokens[index];
     const nextToken = rawTokens[index + 1];
 
-    if (/^\d+$/.test(token) && /^\d+$/.test(nextToken ?? "")) {
+    if (
+      index + 1 < rawTokens.length &&
+      /^\d+$/.test(token) &&
+      /^\d+$/.test(nextToken)
+    ) {
       formattedTokens.push(`${token}.${nextToken}`);
       index += 1;
       continue;
@@ -1327,14 +1381,14 @@ function parseModelValueFromConfigKey(configKey: string | undefined) {
   }
 
   const placeholderMatch = trimmed.match(
-    /^MODEL_PLACEHOLDER_M(\d+)$|^M(\d+)$/i,
+    /^(?:MODEL_PLACEHOLDER_M|M)(\d+)$/i,
   );
 
   if (!placeholderMatch) {
     return null;
   }
 
-  const placeholderIndex = Number(placeholderMatch[1] ?? placeholderMatch[2]);
+  const placeholderIndex = Number(placeholderMatch[1]);
 
   return Number.isInteger(placeholderIndex) && placeholderIndex >= 0
     ? 1_000 + placeholderIndex
@@ -1345,11 +1399,11 @@ function collectPlainProtoStrings(fields: ProtoField[]) {
   const strings: string[] = [];
 
   for (const field of fields) {
-    if (field.wireType !== 2) {
+    if (field.wireType !== 2 || !(field.value instanceof Uint8Array)) {
       continue;
     }
 
-    const rawBytes = field.value as Uint8Array;
+    const rawBytes = field.value;
 
     if (parseProtoFields(rawBytes).length > 0) {
       continue;
@@ -2138,10 +2192,233 @@ function aggregateDebugUsage(
   }
 }
 
+function readConversationDbRows(databasePath: string): {
+  genRows: Array<{ idx: number; data: Buffer }>;
+  stepRows: Array<{ idx: number; metadata: Buffer | null }>;
+} {
+  const database = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+
+  try {
+    const hasGenMetadata = Boolean(
+      database
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gen_metadata' LIMIT 1",
+        )
+        .get(),
+    );
+    const hasSteps = Boolean(
+      database
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'steps' LIMIT 1",
+        )
+        .get(),
+    );
+
+    const genRows = hasGenMetadata
+      ? (database
+          .prepare("SELECT idx, data FROM gen_metadata")
+          .all() as Array<{ idx: number; data: Buffer }>)
+      : [];
+    const stepRows = hasSteps
+      ? (database
+          .prepare(
+            "SELECT idx, metadata FROM steps WHERE metadata IS NOT NULL",
+          )
+          .all() as Array<{ idx: number; metadata: Buffer | null }>)
+      : [];
+
+    return { genRows, stepRows };
+  } finally {
+    database.close();
+  }
+}
+
+async function getConversationDbRows(databasePath: string) {
+  try {
+    return readConversationDbRows(databasePath);
+  } catch (error) {
+    if (!isSqliteLockedError(error)) {
+      return null;
+    }
+
+    try {
+      return await withAntigravityStateSnapshot(databasePath, async (snapshotPath) =>
+        readConversationDbRows(snapshotPath),
+      );
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function aggregateConversationDbUsage(
+  databasePath: string,
+  trajectoryId: string,
+  start: Date,
+  end: Date,
+  recentStart: Date,
+  totals: DailyTotalsByDate,
+  modelTotals: Map<string, ModelTokenTotals>,
+  recentModelTotals: Map<string, ModelTokenTotals>,
+  dynamicModelLabels: ReadonlyMap<number, string>,
+  seenUsageKeys: Set<string>,
+): Promise<boolean> {
+  const data = await getConversationDbRows(databasePath);
+
+  if (!data) {
+    return false;
+  }
+
+  for (const row of data.genRows) {
+    const parsedUsage = parseGeneratorMetadataUsage(
+      new Uint8Array(row.data),
+      trajectoryId,
+      row.idx,
+      dynamicModelLabels,
+    );
+
+    if (!parsedUsage || seenUsageKeys.has(parsedUsage.usageKey)) {
+      continue;
+    }
+
+    seenUsageKeys.add(parsedUsage.usageKey);
+
+    if (parsedUsage.date < start || parsedUsage.date > end) {
+      continue;
+    }
+
+    addDailyTokenTotals(
+      totals,
+      parsedUsage.date,
+      parsedUsage.tokenTotals,
+      parsedUsage.modelName,
+    );
+
+    if (!parsedUsage.modelName) {
+      continue;
+    }
+
+    addModelTokenTotals(
+      modelTotals,
+      parsedUsage.modelName,
+      parsedUsage.tokenTotals,
+    );
+
+    if (parsedUsage.date >= recentStart) {
+      addModelTokenTotals(
+        recentModelTotals,
+        parsedUsage.modelName,
+        parsedUsage.tokenTotals,
+      );
+    }
+  }
+
+  for (const row of data.stepRows) {
+    if (!row.metadata) {
+      continue;
+    }
+
+    const rawStepKey = `${trajectoryId}:step:${row.idx}`;
+    const metadataFields = parseProtoFields(new Uint8Array(row.metadata));
+    const date =
+      parseTimestamp(getProtoBytes(metadataFields, 1)) ??
+      parseTimestamp(getProtoBytes(metadataFields, 6)) ??
+      parseTimestamp(getProtoBytes(metadataFields, 8));
+
+    if (!date) {
+      continue;
+    }
+
+    const modelUsagePayloads = extractStepModelUsagePayloads(metadataFields);
+
+    for (const [index, modelUsagePayload] of modelUsagePayloads.entries()) {
+      const modelUsage = parseModelUsageStats(
+        modelUsagePayload,
+        dynamicModelLabels,
+      );
+
+      if (!modelUsage) {
+        continue;
+      }
+
+      const usageKey =
+        modelUsage.usageIdentifier ?? `raw:${rawStepKey}:${index}`;
+
+      if (seenUsageKeys.has(usageKey)) {
+        continue;
+      }
+
+      seenUsageKeys.add(usageKey);
+
+      if (date < start || date > end) {
+        continue;
+      }
+
+      addDailyTokenTotals(
+        totals,
+        date,
+        modelUsage.tokenTotals,
+        modelUsage.modelName,
+      );
+
+      if (!modelUsage.modelName) {
+        continue;
+      }
+
+      addModelTokenTotals(
+        modelTotals,
+        modelUsage.modelName,
+        modelUsage.tokenTotals,
+      );
+
+      if (date >= recentStart) {
+        addModelTokenTotals(
+          recentModelTotals,
+          modelUsage.modelName,
+          modelUsage.tokenTotals,
+        );
+      }
+    }
+  }
+
+  return true;
+}
+
 export async function isAntigravityAvailable() {
   const connection = await getAntigravityConnectionInfo();
 
-  return connection !== null;
+  if (connection !== null) {
+    return true;
+  }
+
+  for (const dir of getAntigravityConversationDirectories()) {
+    if (existsSync(dir)) {
+      try {
+        const entries = readdirSync(dir);
+
+        if (
+          entries.some(
+            (entry) => entry.endsWith(".db") || entry.endsWith(".pb"),
+          )
+        ) {
+          return true;
+        }
+      } catch {
+        // ignore filesystem read errors
+      }
+    }
+  }
+
+  for (const candidate of getAntigravityStateDbCandidates()) {
+    if (existsSync(candidate)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export async function loadAntigravityRows(
@@ -2149,11 +2426,6 @@ export async function loadAntigravityRows(
   end: Date,
 ): Promise<UsageSummary> {
   const connection = await getAntigravityConnectionInfo();
-
-  if (!connection) {
-    return createEmptySummary(end);
-  }
-
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
@@ -2168,13 +2440,98 @@ export async function loadAntigravityRows(
   );
   const seenUsageKeys = new Set<string>();
   let dynamicModelLabels = new Map<number, string>();
+
+  if (connection) {
+    try {
+      dynamicModelLabels = mergeModelLabelMaps(
+        dynamicModelLabels,
+        await getCascadeModelLabels(connection),
+      );
+    } catch {
+      // continue with static model names when model config data is unavailable
+    }
+
+    try {
+      dynamicModelLabels = mergeModelLabelMaps(
+        dynamicModelLabels,
+        await getCommandModelLabels(connection),
+      );
+    } catch {
+      // continue with static model names when model config data is unavailable
+    }
+
+    try {
+      const debugStepMessages = await getDebugStepMessages(connection);
+
+      aggregateDebugUsage(
+        debugStepMessages,
+        start,
+        end,
+        recentStart,
+        totals,
+        modelTotals,
+        recentModelTotals,
+        dynamicModelLabels,
+        seenUsageKeys,
+      );
+    } catch {
+      // debug endpoint is optional; trajectory paging remains primary source.
+    }
+  }
+
+  const processedTrajectoryIds = new Set<string>();
+  const conversationDirs = getAntigravityConversationDirectories();
+  const pbTrajectoryIds = new Set<string>();
+
+  for (const dir of conversationDirs) {
+    let files: string[];
+
+    try {
+      files = await readdir(dir);
+    } catch {
+      continue;
+    }
+
+    for (const file of files) {
+      if (file.endsWith(".db")) {
+        const trajectoryId = basename(file, ".db");
+
+        if (processedTrajectoryIds.has(trajectoryId)) {
+          continue;
+        }
+
+        const fullPath = join(dir, file);
+        const loaded = await aggregateConversationDbUsage(
+          fullPath,
+          trajectoryId,
+          start,
+          end,
+          recentStart,
+          totals,
+          modelTotals,
+          recentModelTotals,
+          dynamicModelLabels,
+          seenUsageKeys,
+        );
+
+        if (loaded) {
+          processedTrajectoryIds.add(trajectoryId);
+        }
+      } else if (file.endsWith(".pb")) {
+        pbTrajectoryIds.add(basename(file, ".pb"));
+      }
+    }
+  }
+
   let rpcCascadeIds: string[] = [];
   let stateCascadeIds: string[] = [];
 
-  try {
-    rpcCascadeIds = await getCascadeIds(connection);
-  } catch {
-    // continue: unified state cache can still provide trajectory IDs
+  if (connection) {
+    try {
+      rpcCascadeIds = await getCascadeIds(connection);
+    } catch {
+      // continue: unified state cache can still provide trajectory IDs
+    }
   }
 
   try {
@@ -2183,62 +2540,32 @@ export async function loadAntigravityRows(
     // continue: RPC IDs can still provide trajectory coverage
   }
 
-  const cascadeIds = mergeTrajectoryIds(rpcCascadeIds, stateCascadeIds);
+  const allCandidateIds = mergeTrajectoryIds(
+    rpcCascadeIds,
+    stateCascadeIds,
+    [...pbTrajectoryIds],
+  );
 
-  if (cascadeIds.length === 0) {
-    return createEmptySummary(end);
-  }
+  const remainingTrajectoryIds = allCandidateIds.filter(
+    (id) => !processedTrajectoryIds.has(id),
+  );
 
-  try {
-    dynamicModelLabels = mergeModelLabelMaps(
-      dynamicModelLabels,
-      await getCascadeModelLabels(connection),
-    );
-  } catch {
-    // continue with static model names when model config data is unavailable
-  }
-
-  try {
-    dynamicModelLabels = mergeModelLabelMaps(
-      dynamicModelLabels,
-      await getCommandModelLabels(connection),
-    );
-  } catch {
-    // continue with static model names when model config data is unavailable
-  }
-
-  try {
-    const debugStepMessages = await getDebugStepMessages(connection);
-
-    aggregateDebugUsage(
-      debugStepMessages,
-      start,
-      end,
-      recentStart,
-      totals,
-      modelTotals,
-      recentModelTotals,
-      dynamicModelLabels,
-      seenUsageKeys,
-    );
-  } catch {
-    // debug endpoint is optional; trajectory paging remains primary source.
-  }
-
-  for (const trajectoryId of cascadeIds.slice(0, maxTrajectories)) {
-    await aggregateTrajectoryUsage(
-      connection,
-      trajectoryId,
-      start,
-      end,
-      recentStart,
-      totals,
-      modelTotals,
-      recentModelTotals,
-      dynamicModelLabels,
-      seenUsageKeys,
-      maxStepPages,
-    );
+  if (connection && remainingTrajectoryIds.length > 0) {
+    for (const trajectoryId of remainingTrajectoryIds.slice(0, maxTrajectories)) {
+      await aggregateTrajectoryUsage(
+        connection,
+        trajectoryId,
+        start,
+        end,
+        recentStart,
+        totals,
+        modelTotals,
+        recentModelTotals,
+        dynamicModelLabels,
+        seenUsageKeys,
+        maxStepPages,
+      );
+    }
   }
 
   return createUsageSummary(

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import Database from "better-sqlite3";
 import type { UsageSummary } from "../interfaces";
 import {
   type DailyTotalsByDate,
@@ -102,47 +103,6 @@ export function isOpenCodeAvailable() {
   );
 }
 
-async function loadSqliteModule() {
-  try {
-    const moduleName = "node:sqlite";
-
-    return await import(moduleName);
-  } catch {
-    throw new Error(
-      "OpenCode SQLite support requires a Node.js runtime that provides node:sqlite.",
-    );
-  }
-}
-
-async function withoutSqliteExperimentalWarning<T>(callback: () => Promise<T>) {
-  const originalEmitWarning = process.emitWarning.bind(process);
-
-  process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
-    const warningText =
-      typeof warning === "string" ? warning : warning.message;
-    const warningType =
-      warning instanceof Error ? warning.name : String(args[0] ?? "");
-
-    if (
-      warningType === "ExperimentalWarning" &&
-      /sqlite/i.test(warningText)
-    ) {
-      return;
-    }
-
-    return Reflect.apply(originalEmitWarning, process, [
-      warning,
-      ...args,
-    ] as Parameters<typeof process.emitWarning>);
-  }) as typeof process.emitWarning;
-
-  try {
-    return await callback();
-  } finally {
-    process.emitWarning = originalEmitWarning;
-  }
-}
-
 function parseOpenCodeMessageData(
   rowId: string,
   sourceLabel: string,
@@ -157,7 +117,12 @@ function parseOpenCodeMessageData(
 }
 
 function isSqliteLockedError(error: unknown) {
-  return error instanceof Error && /database is locked/i.test(error.message);
+  return (
+    error instanceof Error &&
+    ("code" in error
+      ? error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED"
+      : /database is locked|sqlite_busy/i.test(error.message))
+  );
 }
 
 async function withDatabaseSnapshot<T>(
@@ -186,32 +151,32 @@ async function withDatabaseSnapshot<T>(
   }
 }
 
-async function iterateOpenCodeDatabaseMessages(
+function iterateOpenCodeDatabaseMessages(
   databasePath: string,
   onMessage: (message: OpenCodeMessage) => void,
 ) {
-  await withoutSqliteExperimentalWarning(async () => {
-    const { DatabaseSync } = await loadSqliteModule();
-    const database = new DatabaseSync(databasePath, { readOnly: true });
-
-    try {
-      const statement = database.prepare(
-        "SELECT id, data FROM message ORDER BY time_created ASC",
-      );
-
-      for (const row of statement.iterate() as Iterable<OpenCodeMessageRow>) {
-        onMessage(
-          parseOpenCodeMessageData(
-            row.id,
-            `${databasePath}:message:${row.id}`,
-            row.data,
-          ),
-        );
-      }
-    } finally {
-      database.close();
-    }
+  const database = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
   });
+
+  try {
+    const statement = database.prepare(
+      "SELECT id, data FROM message ORDER BY time_created ASC",
+    );
+
+    for (const row of statement.iterate() as Iterable<OpenCodeMessageRow>) {
+      onMessage(
+        parseOpenCodeMessageData(
+          row.id,
+          `${databasePath}:message:${row.id}`,
+          row.data,
+        ),
+      );
+    }
+  } finally {
+    database.close();
+  }
 }
 
 async function loadOpenCodeDatabaseMessages(
