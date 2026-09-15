@@ -144,6 +144,11 @@ const antigravityModelNames = new Map<number, string>([
   [351, "MODEL_GOOGLE_GEMINI_INFINITYBLOOM"],
   [352, "MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_LOW"],
   [353, "MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_HIGH"],
+  [1026, "Claude Opus 4.6 (Thinking)"],
+  [1035, "Claude Sonnet 4.6 (Thinking)"],
+  [1071, "Gemini 3.6 Flash (High)"],
+  [1298, "Gemini 3.7 Flash (High)"],
+  [1318, "Gemini 3.8 Flash (High)"],
 ]);
 
 let cachedConnectionInfo:
@@ -1090,7 +1095,7 @@ function decodeAntigravityModelName(modelValue: number) {
     return knownName;
   }
 
-  if (modelValue >= 1000 && modelValue <= 1150) {
+  if (modelValue >= 1000 && modelValue <= 2000) {
     return `MODEL_PLACEHOLDER_M${modelValue - 1000}`;
   }
 
@@ -1968,7 +1973,11 @@ async function aggregateTrajectoryUsage(
     totalSteps = counts.totalSteps;
     totalGeneratorMetadata = counts.totalGeneratorMetadata;
   } catch {
-    // keep processing with step-page responses when count lookup fails
+    return;
+  }
+
+  if (totalSteps <= 0 && totalGeneratorMetadata <= 0) {
+    return;
   }
 
   const seenRawSteps = new Set<string>();
