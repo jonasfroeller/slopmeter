@@ -51,6 +51,18 @@ export interface Insights {
   };
 }
 
+export interface ModelTableEntry {
+  name: string;
+  input: number;
+  output: number;
+  cache: {
+    input: number;
+    output: number;
+  };
+  total: number;
+  share: number;
+}
+
 export interface JsonExportPayload {
   version: string;
   start: string;
@@ -62,6 +74,7 @@ export interface JsonUsageSummary {
   provider: UsageProviderId;
   daily: JsonDailyUsage[];
   insights?: Insights;
+  models?: ModelTableEntry[];
 }
 
 export interface JsonDailyUsage {

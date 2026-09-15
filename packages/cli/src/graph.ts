@@ -2,6 +2,11 @@ import svgBuilder, { type SVGBuilderInstance } from "svg-builder";
 import type { DailyUsage, Insights, ModelUsage } from "./interfaces";
 import type { ProviderId } from "./lib/interfaces";
 import { formatLocalDate } from "./lib/utils";
+import {
+  aggregateModelsTable,
+  drawModelsTableCard,
+  getModelsCardHeight,
+} from "./models-card";
 
 type HeatmapThemeId = ProviderId | "all";
 
@@ -70,6 +75,7 @@ interface RenderUsageHeatmapsSvgOptions {
   endDate: Date;
   sections: RenderUsageHeatmapsSvgSection[];
   colorMode: ColorMode;
+  includeModelsCard?: boolean;
 }
 
 interface SurfacePalette {
@@ -881,6 +887,7 @@ export function renderUsageHeatmapsSvg({
   endDate,
   sections,
   colorMode,
+  includeModelsCard = false,
 }: RenderUsageHeatmapsSvgOptions) {
   const grid = getCalendarGrid(startDate, endDate);
   const layout = getSectionLayout(grid.weeks.length);
@@ -889,12 +896,33 @@ export function renderUsageHeatmapsSvg({
   const topPadding = 30;
   const bottomPadding = 18;
   const sectionGap = 40;
+  const modelsCardGap = 16;
+
+  const sectionMetrics = sections.map((section) => {
+    if (!includeModelsCard) {
+      return { modelsCount: 0, totalHeight: layout.height };
+    }
+
+    const summary = aggregateModelsTable(section.daily);
+    const modelsCount = summary.models.length;
+    const modelsCardHeight = getModelsCardHeight(modelsCount);
+    const totalHeight =
+      modelsCount > 0
+        ? layout.height + modelsCardGap + modelsCardHeight
+        : layout.height;
+
+    return { modelsCount, totalHeight };
+  });
 
   const width = horizontalPadding * 2 + layout.width;
+  const contentHeight = sectionMetrics.reduce(
+    (sum, m) => sum + m.totalHeight,
+    0,
+  );
   const height =
     topPadding +
     bottomPadding +
-    sections.length * layout.height +
+    contentHeight +
     Math.max(sections.length - 1, 0) * sectionGap;
 
   let svg = svgBuilder
@@ -910,12 +938,14 @@ export function renderUsageHeatmapsSvg({
       fill: palette.background,
     });
 
+  let currentY = topPadding;
+
   sections.forEach((section, index) => {
-    const sectionY = topPadding + index * (layout.height + sectionGap);
+    const metrics = sectionMetrics[index];
 
     svg = drawHeatmapSection(svg, {
       x: horizontalPadding,
-      y: sectionY,
+      y: currentY,
       grid,
       layout,
       daily: section.daily,
@@ -926,6 +956,24 @@ export function renderUsageHeatmapsSvg({
       colorMode,
       palette,
     });
+
+    if (includeModelsCard && metrics.modelsCount > 0) {
+      const accentColor =
+        colorMode === "dark" ? section.colors.dark[3] : section.colors.light[3];
+
+      svg = drawModelsTableCard(svg, {
+        x: horizontalPadding,
+        y: currentY + layout.height + modelsCardGap,
+        width: layout.width,
+        daily: section.daily,
+        colorMode,
+        accentColor,
+        fontFamily,
+        providerTitle: section.title,
+      });
+    }
+
+    currentY += metrics.totalHeight + sectionGap;
   });
 
   return svg.render();

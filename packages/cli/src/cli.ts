@@ -23,12 +23,15 @@ import {
   providerStatusLabel,
 } from "./providers";
 
+import { aggregateModelsTable } from "./models-card";
+
 type OutputFormat = "png" | "svg" | "json";
 interface CliArgValues {
   output?: string;
   format?: string;
   help: boolean;
   dark: boolean;
+  models: boolean;
   all: boolean;
   antigravity: boolean;
   amp: boolean;
@@ -50,7 +53,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--opencode] [--pi] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--opencode] [--pi] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -62,9 +65,10 @@ Options:
   --gemini                    Render Gemini CLI graph
   --opencode                  Render Open Code graph
   --pi                        Render Pi Coding Agent graph
+  -m, --models                Include a detailed card with all models listed in a table
   --dark                      Render with the dark theme
   -f, --format                Output format: png, svg, or json (default: png)
-  -o, --output                Output file path (default: ./heatmap-last-year.png)
+  -o, --output                Output file path (default: ./heatmap-last-year_<timestamp>.png)
   -h, --help                  Show this help
 `;
 
@@ -80,6 +84,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       format: ow.optional.string.nonEmpty,
       help: ow.boolean,
       dark: ow.boolean,
+      models: ow.boolean,
       all: ow.boolean,
       antigravity: ow.boolean,
       amp: ow.boolean,
@@ -143,10 +148,18 @@ function writeOutputJson(outputPath: string, payload: JsonExportPayload) {
   writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
-function toJsonUsageSummary(summary: UsageSummary): JsonUsageSummary {
+function toJsonUsageSummary(
+  summary: UsageSummary,
+  includeModels = false,
+): JsonUsageSummary {
+  const models = includeModels
+    ? aggregateModelsTable(summary.daily).models
+    : undefined;
+
   return {
     provider: summary.provider,
     insights: summary.insights,
+    ...(models && models.length > 0 ? { models } : {}),
     daily: summary.daily.map((row) => ({
       date: formatLocalDate(row.date),
       input: row.input,
@@ -328,6 +341,7 @@ async function main() {
       format: { type: "string", short: "f" },
       help: { type: "boolean", short: "h", default: false },
       dark: { type: "boolean", default: false },
+      models: { type: "boolean", short: "m", default: false },
       all: { type: "boolean", default: false },
       antigravity: { type: "boolean", default: false },
       amp: { type: "boolean", default: false },
@@ -402,7 +416,7 @@ async function main() {
         start: formatLocalDate(start),
         end: formatLocalDate(end),
         providers: exportProviders.map((provider) =>
-          toJsonUsageSummary(provider),
+          toJsonUsageSummary(provider, values.models),
         ),
       };
 
@@ -415,6 +429,7 @@ async function main() {
         startDate: start,
         endDate: end,
         colorMode,
+        includeModelsCard: values.models,
         sections: exportProviders.map(({ provider, daily, insights }) => ({
           daily,
           insights,

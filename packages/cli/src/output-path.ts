@@ -1,8 +1,8 @@
 import type { ProviderId } from "./lib/interfaces";
 
-type OutputFormat = "png" | "svg" | "json";
+export type OutputFormat = "png" | "svg" | "json";
 
-interface ProviderSelectionValues {
+export interface ProviderSelectionValues {
   all: boolean;
   antigravity: boolean;
   amp: boolean;
@@ -45,9 +45,26 @@ export function getDefaultOutputSuffix(values: ProviderSelectionValues) {
   return `_${requestedProviders.join("_")}`;
 }
 
+export function formatFileTimestamp(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const mins = String(date.getMinutes()).padStart(2, "0");
+  const secs = String(date.getSeconds()).padStart(2, "0");
+
+  return `${y}-${m}-${d}_${hours}-${mins}-${secs}`;
+}
+
 export function getDefaultOutputPath(
   values: ProviderSelectionValues,
   format: OutputFormat,
+  timestamp?: Date | null,
 ) {
-  return `./heatmap-last-year${getDefaultOutputSuffix(values)}.${format}`;
+  const timeSuffix =
+    timestamp === null
+      ? ""
+      : `_${formatFileTimestamp(timestamp ?? new Date())}`;
+
+  return `./heatmap-last-year${getDefaultOutputSuffix(values)}${timeSuffix}.${format}`;
 }

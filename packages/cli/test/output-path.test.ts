@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  formatFileTimestamp,
   getDefaultOutputPath,
   getDefaultOutputSuffix,
 } from "../src/output-path";
@@ -30,40 +31,54 @@ function createValues(overrides?: Partial<{
   };
 }
 
-test("default output path stays unsuffixed when no provider flags are set", () => {
+const fixedDate = new Date(2026, 8, 15, 14, 30, 45);
+
+test("formatFileTimestamp formats dates as YYYY-MM-DD_HH-mm-ss", () => {
+  assert.equal(formatFileTimestamp(fixedDate), "2026-09-15_14-30-45");
+});
+
+test("default output path includes timestamp when no provider flags are set", () => {
   assert.equal(
-    getDefaultOutputPath(createValues(), "png"),
-    "./heatmap-last-year.png",
+    getDefaultOutputPath(createValues(), "png", fixedDate),
+    "./heatmap-last-year_2026-09-15_14-30-45.png",
   );
 });
 
-test("default output path adds _cursor for --cursor", () => {
+test("default output path includes timestamp and adds _cursor for --cursor", () => {
   assert.equal(
-    getDefaultOutputPath(createValues({ cursor: true }), "png"),
-    "./heatmap-last-year_cursor.png",
+    getDefaultOutputPath(createValues({ cursor: true }), "png", fixedDate),
+    "./heatmap-last-year_cursor_2026-09-15_14-30-45.png",
   );
 });
 
-test("default output path adds _all for --all", () => {
+test("default output path adds _all for --all with timestamp", () => {
   assert.equal(
-    getDefaultOutputPath(createValues({ all: true, cursor: true }), "json"),
-    "./heatmap-last-year_all.json",
+    getDefaultOutputPath(createValues({ all: true, cursor: true }), "json", fixedDate),
+    "./heatmap-last-year_all_2026-09-15_14-30-45.json",
   );
 });
 
-test("default output path reflects multiple explicit provider flags", () => {
+test("default output path reflects multiple explicit provider flags with timestamp", () => {
   assert.equal(
     getDefaultOutputPath(
       createValues({ codex: true, cursor: true, pi: true }),
       "svg",
+      fixedDate,
     ),
-    "./heatmap-last-year_codex_cursor_pi.svg",
+    "./heatmap-last-year_codex_cursor_pi_2026-09-15_14-30-45.svg",
   );
 });
 
-test("default output path adds _antigravity for --antigravity", () => {
+test("default output path adds _antigravity with timestamp", () => {
   assert.equal(
-    getDefaultOutputPath(createValues({ antigravity: true }), "png"),
+    getDefaultOutputPath(createValues({ antigravity: true }), "png", fixedDate),
+    "./heatmap-last-year_antigravity_2026-09-15_14-30-45.png",
+  );
+});
+
+test("default output path omits timestamp when null is provided", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ antigravity: true }), "png", null),
     "./heatmap-last-year_antigravity.png",
   );
 });

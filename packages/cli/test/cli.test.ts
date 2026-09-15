@@ -1740,3 +1740,73 @@ test("Gemini fails clearly on oversized session JSON documents", async (t) => {
   );
   assert.match(result.stderr, /SLOPMETER_MAX_JSONL_RECORD_BYTES/);
 });
+
+test("--models includes aggregated models breakdown table in JSON and SVG outputs", async (t) => {
+  const workspace = createTempWorkspace("models-flag");
+
+  t.after(() => {
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
+  const geminiDir = join(workspace, "gemini");
+  const sessionFile = join(
+    geminiDir,
+    "tmp",
+    "project-a",
+    "chats",
+    "session-models.json",
+  );
+  const jsonOutput = join(workspace, "out.json");
+  const svgOutput = join(workspace, "out.svg");
+
+  writeJsonFile(
+    sessionFile,
+    JSON.stringify({
+      sessionId: "gemini-models-1",
+      startTime: recentIso(),
+      lastUpdated: recentIso(),
+      messages: [
+        geminiMessage({
+          id: "gemini-msg-1",
+          model: "gemini-2.5-pro",
+          input: 100,
+          output: 50,
+          total: 150,
+        }),
+        geminiMessage({
+          id: "gemini-msg-2",
+          model: "gemini-2.5-flash",
+          input: 200,
+          output: 80,
+          total: 280,
+        }),
+      ],
+    }),
+  );
+
+  const jsonResult = await runCli(
+    ["--gemini", "--models", "--format", "json", "--output", jsonOutput],
+    { GEMINI_CONFIG_DIR: geminiDir },
+  );
+
+  assert.equal(jsonResult.code, 0);
+  const jsonContent = JSON.parse(readFileSync(jsonOutput, "utf8"));
+  assert.ok(jsonContent.providers[0].models);
+  assert.equal(jsonContent.providers[0].models.length, 2);
+  assert.equal(jsonContent.providers[0].models[0].name, "gemini-2.5-flash");
+  assert.equal(jsonContent.providers[0].models[0].total, 280);
+  assert.equal(jsonContent.providers[0].models[1].name, "gemini-2.5-pro");
+  assert.equal(jsonContent.providers[0].models[1].total, 150);
+
+  const svgResult = await runCli(
+    ["--gemini", "-m", "--format", "svg", "--output", svgOutput],
+    { GEMINI_CONFIG_DIR: geminiDir },
+  );
+
+  assert.equal(svgResult.code, 0);
+  const svgContent = readFileSync(svgOutput, "utf8");
+  assert.match(svgContent, /MODEL BREAKDOWN/);
+  assert.match(svgContent, /gemini-2\.5-flash/);
+  assert.match(svgContent, /gemini-2\.5-pro/);
+});
+
