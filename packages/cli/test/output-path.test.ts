@@ -13,6 +13,7 @@ function createValues(overrides?: Partial<{
   claude: boolean;
   codex: boolean;
   cursor: boolean;
+  freebuff: boolean;
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
@@ -27,6 +28,7 @@ function createValues(overrides?: Partial<{
     claude: false,
     codex: false,
     cursor: false,
+    freebuff: false,
     gemini: false,
     opencode: false,
     pi: false,
@@ -117,5 +119,12 @@ test("default output path adds _windsurf with timestamp", () => {
   assert.equal(
     getDefaultOutputPath(createValues({ windsurf: true }), "png", fixedDate),
     "./heatmap-last-year_windsurf_2026-09-15_14-30-45.png",
+  );
+});
+
+test("default output path adds _freebuff with timestamp", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ freebuff: true }), "png", fixedDate),
+    "./heatmap-last-year_freebuff_2026-09-15_14-30-45.png",
   );
 });

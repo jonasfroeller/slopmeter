@@ -180,6 +180,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  freebuff: {
+    title: "Freebuff",
+    colors: {
+      light: [
+        "#fefce8", // yellow-50
+        "#fde68a", // yellow-300
+        "#facc15", // yellow-400
+        "#ca8a04", // yellow-600
+        "#854d0e", // yellow-800
+      ],
+      dark: [
+        "#422006", // yellow-950
+        "#713f12", // yellow-800
+        "#a16207", // yellow-700
+        "#eab308", // yellow-500
+        "#fde047", // yellow-300
+      ],
+    },
+  },
   gemini: {
     title: "Gemini CLI",
     colors: {
@@ -296,7 +315,7 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
   },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf",
+      "Antigravity / Amp / Claude Code / Codex / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf",
     titleCaption: "Total usage from",
     colors: {
       light: [

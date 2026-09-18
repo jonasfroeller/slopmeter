@@ -38,6 +38,7 @@ interface CliArgValues {
   claude: boolean;
   codex: boolean;
   cursor: boolean;
+  freebuff: boolean;
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
@@ -56,7 +57,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -65,6 +66,7 @@ Options:
   --claude                    Render Claude Code graph
   --codex                     Render Codex graph
   --cursor                    Render Cursor graph
+  --freebuff                  Render Freebuff graph
   --gemini                    Render Gemini CLI graph
   --grok                      Render Grok graph
   --opencode                  Render Open Code graph
@@ -97,6 +99,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       claude: ow.boolean,
       codex: ow.boolean,
       cursor: ow.boolean,
+      freebuff: ow.boolean,
       gemini: ow.boolean,
       opencode: ow.boolean,
       pi: ow.boolean,
@@ -210,7 +213,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, or Windsurf.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, or Windsurf.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -358,6 +361,7 @@ async function main() {
       claude: { type: "boolean", default: false },
       codex: { type: "boolean", default: false },
       cursor: { type: "boolean", default: false },
+      freebuff: { type: "boolean", default: false },
       gemini: { type: "boolean", default: false },
       opencode: { type: "boolean", default: false },
       pi: { type: "boolean", default: false },

@@ -1,6 +1,6 @@
 # slopmeter
 
-`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, and Windsurf usage data and generates a contribution-style heatmap for the rolling past year.
+`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, and Windsurf usage data and generates a contribution-style heatmap for the rolling past year.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ slopmeter
 ## Usage
 
 ```bash
-slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 ```
 
 By default, the CLI:
@@ -40,6 +40,7 @@ By default, the CLI:
 - `--claude`: include only Claude Code data
 - `--codex`: include only Codex data
 - `--cursor`: include only Cursor data
+- `--freebuff`: include only Freebuff data
 - `--antigravity`: include only Antigravity data
 - `--gemini`: include only Gemini CLI data
 - `--grok`: include only Grok data
@@ -137,6 +138,8 @@ npx slopmeter --dark --format svg --output ./out/heatmap-dark.svg
 - Earliest Claude Code activity fallback: uses `$CLAUDE_CONFIG_DIR/history.jsonl`, `~/.config/claude/history.jsonl`, or `~/.claude/history.jsonl` to mark activity-only days when token totals are unavailable
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
+- Freebuff: `~/.config/manicode/projects/**/chats/**/chat-messages.json`, plus `manicode-dev` and `manicode-staging`; when those files are absent, the running Desktop orchestrator's local `/api/projects` and `/api/thread/:id` endpoints are used; override file roots with `FREEBUFF_CONFIG_DIR` or `FREEBUFF_DATA_DIR`, and the API with `FREEBUFF_API_URL`
+- Freebuff and paid Codebuff can share the `manicode` root. If both are installed and must be separated, point `FREEBUFF_CONFIG_DIR` at an isolated Freebuff root.
 - Windsurf: discovers running or installed Windsurf language servers and reads Cascade trajectory usage from Codeium protobuf RPCs; when Windsurf is closed, a discovered language server may be started briefly for a read-only scan
 - Cursor: reads `cursorAuth/accessToken` and `cursorAuth/refreshToken` from `$CURSOR_STATE_DB_PATH`, `$CURSOR_CONFIG_DIR/User/globalStorage/state.vscdb`, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS), `%APPDATA%/Cursor/User/globalStorage/state.vscdb` (Windows), or `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux), then loads usage from Cursor's CSV export endpoint
 - Gemini CLI: `$GEMINI_CONFIG_DIR/tmp/**/chats/session-*.json` or `~/.gemini/tmp/**/chats/session-*.json`
@@ -153,6 +156,7 @@ When Claude Code falls back to `history.jsonl`, those days are rendered as activ
 - If `--all` is passed, `slopmeter` loads all providers and renders one combined graph with merged totals, streaks, and model rankings.
 - Pi Coding Agent usage is derived from assistant messages in Pi session logs, grouped by the model that handled each turn.
 - Antigravity usage is derived from local Antigravity language server trajectory RPCs plus trajectory IDs from local Antigravity unified state.
+- Freebuff usage is derived from assistant-message usage records in local `chat-messages.json` files, or, when those files are unavailable, from the authenticated local Freebuff Desktop API.
 - If provider flags are passed and a requested provider has no data, the command exits with an error.
 - If no provider has data, the command exits with an error.
 
@@ -170,6 +174,9 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `ANTIGRAVITY_STATE_DB_PATH`: override Antigravity unified-state DB discovery with an explicit `state.vscdb` path.
 - `ANTIGRAVITY_MAX_TRAJECTORIES`: cap the number of cascades scanned per run. Default: `200`.
 - `ANTIGRAVITY_MAX_STEP_PAGES`: cap per-cascade step page fetches (20-step page size). Default: `100`.
+- `FREEBUFF_CONFIG_DIR`: override the Freebuff configuration root. Multiple roots may be comma-separated.
+- `FREEBUFF_DATA_DIR`: compatibility alias for `FREEBUFF_CONFIG_DIR`.
+- `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.
 - `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
 - `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.
 - `WINDSURF_LANGUAGE_SERVER_PATH`: override the Windsurf language-server binary path used for headless reads.
@@ -182,8 +189,8 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `TRAE_DATABASE_PATH`: override Trae database discovery with an explicit decrypted SQLite database path or JSON export path.
 - `TRAE_SQLCIPHER_KEY`: 64-character raw hex key to decrypt Trae's SQLCipher database on the fly.
 - `TRAE_CONFIG_DIR`: override root Trae config directory used for discovery.
-- `SLOPMETER_FILE_PROCESS_CONCURRENCY`: positive integer file-processing limit for Claude Code and Codex JSONL files. Default: `16`.
-- `SLOPMETER_MAX_JSONL_RECORD_BYTES`: byte cap for Claude Code and Codex JSONL records, OpenCode JSON documents, and OpenCode SQLite `message.data` payloads. Default: `67108864` (`64 MB`).
+- `SLOPMETER_FILE_PROCESS_CONCURRENCY`: positive integer file-processing limit for Claude Code, Codex, and Freebuff usage files. Default: `16`.
+- `SLOPMETER_MAX_JSONL_RECORD_BYTES`: byte cap for Claude Code and Codex JSONL records, Freebuff chat JSON documents, OpenCode JSON documents, and OpenCode SQLite `message.data` payloads. Default: `67108864` (`64 MB`).
 
 ## JSONL record handling
 
