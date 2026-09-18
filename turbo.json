@@ -16,10 +16,16 @@
         "PI_CODING_AGENT_DIR",
         "SLOPMETER_FILE_PROCESS_CONCURRENCY",
         "SLOPMETER_MAX_JSONL_RECORD_BYTES",
-        "XDG_CONFIG_HOME"
+        "TRAE_CONFIG_DIR",
+        "TRAE_DATABASE_PATH",
+        "TRAE_DB_PATH",
+        "TRAE_SQLCIPHER_KEY",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME"
       ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"]
+
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
@@ -39,7 +45,12 @@
         "PI_CODING_AGENT_DIR",
         "SLOPMETER_FILE_PROCESS_CONCURRENCY",
         "SLOPMETER_MAX_JSONL_RECORD_BYTES",
-        "XDG_CONFIG_HOME"
+        "TRAE_CONFIG_DIR",
+        "TRAE_DATABASE_PATH",
+        "TRAE_DB_PATH",
+        "TRAE_SQLCIPHER_KEY",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME"
       ]
     },
     "start": {

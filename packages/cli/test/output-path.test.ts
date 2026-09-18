@@ -16,6 +16,7 @@ function createValues(overrides?: Partial<{
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
+  trae: boolean;
 }>) {
   return {
     all: false,
@@ -27,9 +28,11 @@ function createValues(overrides?: Partial<{
     gemini: false,
     opencode: false,
     pi: false,
+    trae: false,
     ...overrides,
   };
 }
+
 
 const fixedDate = new Date(2026, 8, 15, 14, 30, 45);
 
@@ -91,3 +94,11 @@ test("default output suffix follows provider flag order", () => {
     "_amp_gemini_opencode_pi",
   );
 });
+
+test("default output path adds _trae with timestamp", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ trae: true }), "svg", fixedDate),
+    "./heatmap-last-year_trae_2026-09-15_14-30-45.svg",
+  );
+});
+

@@ -7,7 +7,9 @@ export type UsageProviderId =
   | "gemini"
   | "opencode"
   | "pi"
+  | "trae"
   | "all";
+
 
 export interface UsageSummary {
   provider: UsageProviderId;

@@ -18,6 +18,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
 .env
+.env.*
+!.env.example
+*.env
+*.key
 .env.development.local
 .env.test.local
 .env.production.local
@@ -34,3 +38,7 @@ tmp-state.vscdb
 
 # Finder (MacOS) folder config
 .DS_Store
+
+heatmap*.png
+heatmap*.json
+heatmap*.svg

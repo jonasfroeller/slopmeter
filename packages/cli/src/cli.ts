@@ -13,7 +13,7 @@ import type {
 } from "./interfaces";
 import { getDefaultOutputPath } from "./output-path";
 import type { ProviderId } from "./providers";
-import { formatLocalDate } from "./lib/utils";
+import { formatLocalDate, loadEnv } from "./lib/utils";
 import {
   aggregateUsage,
   defaultProviderIds,
@@ -41,6 +41,7 @@ interface CliArgValues {
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
+  trae: boolean;
 }
 
 const PNG_BASE_WIDTH = 1000;
@@ -65,6 +66,7 @@ Options:
   --gemini                    Render Gemini CLI graph
   --opencode                  Render Open Code graph
   --pi                        Render Pi Coding Agent graph
+  --trae                      Render Trae graph
   -m, --models                Include a detailed card with all models listed in a table
   --dark                      Render with the dark theme
   -f, --format                Output format: png, svg, or json (default: png)
@@ -94,6 +96,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       gemini: ow.boolean,
       opencode: ow.boolean,
       pi: ow.boolean,
+      trae: ow.boolean,
     }),
   );
 }
@@ -201,7 +204,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, or Pi Coding Agent.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, Pi Coding Agent, or Trae.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -333,6 +336,7 @@ function printRunSummary(
 }
 
 async function main() {
+  loadEnv();
   let spinner: Ora | undefined;
 
   const parsed = parseArgs({
@@ -351,6 +355,7 @@ async function main() {
       gemini: { type: "boolean", default: false },
       opencode: { type: "boolean", default: false },
       pi: { type: "boolean", default: false },
+      trae: { type: "boolean", default: false },
     },
     allowPositionals: false,
   });

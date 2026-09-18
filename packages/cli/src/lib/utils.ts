@@ -1,7 +1,39 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { DailyUsage, Insights, ModelUsage, UsageSummary } from "../interfaces";
+
+let envLoaded = false;
+
+export function loadEnv(): void {
+  if (envLoaded) {
+    return;
+  }
+
+  envLoaded = true;
+
+  try {
+    process.loadEnvFile();
+    return;
+  } catch {
+    // Current working directory has no .env
+  }
+
+  try {
+    const parentEnv = resolve(process.cwd(), "..", ".env");
+    if (existsSync(parentEnv)) {
+      process.loadEnvFile(parentEnv);
+      return;
+    }
+
+    const rootEnv = resolve(process.cwd(), "..", "..", ".env");
+    if (existsSync(rootEnv)) {
+      process.loadEnvFile(rootEnv);
+    }
+  } catch {
+    // Ignore non-fatal resolution errors
+  }
+}
 
 export function formatLocalDate(date: Date) {
   const y = date.getFullYear();

@@ -237,9 +237,28 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  trae: {
+    title: "Trae",
+    colors: {
+      light: [
+        "#f5f3ff", // violet-50
+        "#ddd6fe", // violet-200
+        "#c4b5fd", // violet-300
+        "#8b5cf6", // violet-500
+        "#6d28d9", // violet-700
+      ],
+      dark: [
+        "#2e1065", // violet-950
+        "#5b21b6", // violet-800
+        "#7c3aed", // violet-600
+        "#a78bfa", // violet-400
+        "#ddd6fe", // violet-200
+      ],
+    },
+  },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Open Code / Pi Coding Agent",
+      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Open Code / Pi Coding Agent / Trae",
     titleCaption: "Total usage from",
     colors: {
       light: [

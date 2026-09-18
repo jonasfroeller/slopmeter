@@ -13,6 +13,7 @@ import {
 } from "./lib/interfaces";
 import { isOpenCodeAvailable, loadOpenCodeRows } from "./lib/open-code";
 import { isPiAvailable, loadPiRows } from "./lib/pi";
+import { isTraeAvailable, loadTraeRows } from "./lib/trae";
 import { hasUsage, mergeUsageSummaries } from "./lib/utils";
 
 export { defaultProviderIds, providerIds, providerStatusLabel, type ProviderId };
@@ -40,6 +41,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     gemini: false,
     opencode: false,
     pi: false,
+    trae: false,
   };
 }
 
@@ -61,6 +63,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isOpenCodeAvailable();
     case "pi":
       return isPiAvailable();
+    case "trae":
+      return isTraeAvailable();
     default: {
       const exhaustiveCheck: never = provider;
 
@@ -113,6 +117,7 @@ export async function aggregateUsage({
     gemini: null,
     opencode: null,
     pi: null,
+    trae: null,
   };
   const warnings: string[] = [];
 
@@ -143,6 +148,9 @@ export async function aggregateUsage({
         break;
       case "pi":
         summary = await loadPiRows(start, end);
+        break;
+      case "trae":
+        summary = await loadTraeRows(start, end);
         break;
       default: {
         const exhaustiveCheck: never = provider;

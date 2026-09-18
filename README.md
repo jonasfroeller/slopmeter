@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Claude Code, Codex, Cursor, Gemini CLI, Open Code, and Pi Coding Agent for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, Pi Coding Agent, and Trae for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -63,6 +63,7 @@ slopmeter --antigravity
 slopmeter --gemini
 slopmeter --opencode
 slopmeter --pi
+slopmeter --trae
 ```
 
 ## What the image shows
@@ -85,6 +86,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 
 - Default format is PNG.
 - If `--output` is omitted, the default filename is `heatmap-last-year.<ext>`, `heatmap-last-year_<providers>.<ext>` for explicit provider flags, or `heatmap-last-year_all.<ext>` for `--all`.
+
 - If `--format` is omitted, format is inferred from `--output` extension (`.png`, `.svg`, or `.json`).
 - If neither provides a format, PNG is used.
 
@@ -111,6 +113,8 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 
 ## Environment knobs
 
+Environment variables can be exported in your shell or defined in a local `.env` file (see `.env.example`). `slopmeter` automatically loads `.env` files on startup.
+
 - `ANTIGRAVITY_CONFIG_DIR`: override the Antigravity config root used for log discovery.
 - `ANTIGRAVITY_LOG_PATH`: override Antigravity log discovery with an explicit `Antigravity.log` file path.
 - `ANTIGRAVITY_LS_PID`: force a language server PID for RPC discovery.
@@ -119,8 +123,12 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - `ANTIGRAVITY_STATE_DB_PATH`: override Antigravity unified-state DB discovery with an explicit `state.vscdb` path.
 - `ANTIGRAVITY_MAX_TRAJECTORIES`: cap the number of cascades scanned per run. Default: `200`.
 - `ANTIGRAVITY_MAX_STEP_PAGES`: cap per-cascade step page fetches (20-step page size). Default: `100`.
+- `TRAE_DATABASE_PATH`: override Trae database discovery with an explicit decrypted SQLite database path or JSON export path.
+- `TRAE_SQLCIPHER_KEY`: 64-character raw hex key to decrypt Trae's SQLCipher database (`ModularData/ai-agent/database.db`) on the fly.
+- `TRAE_CONFIG_DIR`: override the Trae root data directory used for database discovery.
 - `SLOPMETER_FILE_PROCESS_CONCURRENCY`: positive integer file-processing limit for Claude Code and Codex JSONL files. Default: `16`.
 - `SLOPMETER_MAX_JSONL_RECORD_BYTES`: byte cap for Claude Code and Codex JSONL records, OpenCode JSON documents, and OpenCode SQLite `message.data` payloads. Default: `67108864` (`64 MB`).
+
 
 ## JSONL oversized-record behavior
 
@@ -136,10 +144,12 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 
 ## Data locations
 
+
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` (comma-separated dirs) or defaults `~/.config/claude/projects` and `~/.claude/projects`
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
 - Cursor: reads `cursorAuth/accessToken` and `cursorAuth/refreshToken` from `$CURSOR_STATE_DB_PATH`, `$CURSOR_CONFIG_DIR/User/globalStorage/state.vscdb`, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS), `%APPDATA%/Cursor/User/globalStorage/state.vscdb` (Windows), or `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux), then loads usage from Cursor's CSV export endpoint
 - Gemini CLI: `$GEMINI_CONFIG_DIR/tmp/**/chats/session-*.json` or `~/.gemini/tmp/**/chats/session-*.json`
-- Open Code: prefers `$OPENCODE_DATA_DIR/opencode.db` or `~/.local/share/opencode/opencode.db`, and falls back to `$OPENCODE_DATA_DIR/storage/message` or `~/.local/share/opencode/storage/message`
-- Pi Coding Agent: `$PI_CODING_AGENT_DIR/sessions` or `~/.pi/agent/sessions`
+- `Open Code`: prefers `$OPENCODE_DATA_DIR/opencode.db` or `~/.local/share/opencode/opencode.db`, and falls back to `$OPENCODE_DATA_DIR/storage/message` or `~/.local/share/opencode/storage/message`
+- `Pi Coding Agent`: `$PI_CODING_AGENT_DIR/sessions` or `~/.pi/agent/sessions`
+- `Trae`: `$TRAE_DATABASE_PATH`, auto-discovered `database_decrypted.db` in `%APPDATA%/Trae/ModularData/ai-agent/` (or `TRAE SOLO`, macOS `~/Library/Application Support/Trae`, Linux `~/.config/Trae`), or `database.db` when `TRAE_SQLCIPHER_KEY` is provided
