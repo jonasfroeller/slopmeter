@@ -14,6 +14,7 @@ export function loadEnv(): void {
 
   try {
     process.loadEnvFile();
+
     return;
   } catch {
     // Current working directory has no .env
@@ -21,12 +22,15 @@ export function loadEnv(): void {
 
   try {
     const parentEnv = resolve(process.cwd(), "..", ".env");
+
     if (existsSync(parentEnv)) {
       process.loadEnvFile(parentEnv);
+
       return;
     }
 
     const rootEnv = resolve(process.cwd(), "..", "..", ".env");
+
     if (existsSync(rootEnv)) {
       process.loadEnvFile(rootEnv);
     }

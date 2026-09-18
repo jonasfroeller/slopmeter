@@ -17,6 +17,7 @@ function createValues(overrides?: Partial<{
   opencode: boolean;
   pi: boolean;
   trae: boolean;
+  grok: boolean;
 }>) {
   return {
     all: false,
@@ -29,6 +30,7 @@ function createValues(overrides?: Partial<{
     opencode: false,
     pi: false,
     trae: false,
+    grok: false,
     ...overrides,
   };
 }
@@ -99,6 +101,13 @@ test("default output path adds _trae with timestamp", () => {
   assert.equal(
     getDefaultOutputPath(createValues({ trae: true }), "svg", fixedDate),
     "./heatmap-last-year_trae_2026-09-15_14-30-45.svg",
+  );
+});
+
+test("default output path adds _grok with timestamp", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ grok: true }), "png", fixedDate),
+    "./heatmap-last-year_grok_2026-09-15_14-30-45.png",
   );
 });
 

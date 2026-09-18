@@ -42,6 +42,7 @@ interface CliArgValues {
   opencode: boolean;
   pi: boolean;
   trae: boolean;
+  grok: boolean;
 }
 
 const PNG_BASE_WIDTH = 1000;
@@ -54,7 +55,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--opencode] [--pi] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -64,6 +65,7 @@ Options:
   --codex                     Render Codex graph
   --cursor                    Render Cursor graph
   --gemini                    Render Gemini CLI graph
+  --grok                      Render Grok graph
   --opencode                  Render Open Code graph
   --pi                        Render Pi Coding Agent graph
   --trae                      Render Trae graph
@@ -97,6 +99,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       opencode: ow.boolean,
       pi: ow.boolean,
       trae: ow.boolean,
+      grok: ow.boolean,
     }),
   );
 }
@@ -204,7 +207,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, Pi Coding Agent, or Trae.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, or Trae.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -356,6 +359,7 @@ async function main() {
       opencode: { type: "boolean", default: false },
       pi: { type: "boolean", default: false },
       trae: { type: "boolean", default: false },
+      grok: { type: "boolean", default: false },
     },
     allowPositionals: false,
   });

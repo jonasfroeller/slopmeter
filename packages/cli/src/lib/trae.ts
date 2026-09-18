@@ -206,6 +206,7 @@ function resolveTraeKey(databasePath?: string): string | null {
 
       if (verifySqlcipherKey(databasePath, keyBuffer)) {
         const cachePath = getTraeKeyCachePath();
+
         try {
           mkdirSync(dirname(cachePath), { recursive: true });
           writeFileSync(cachePath, envKey, "utf8");

@@ -256,9 +256,28 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  grok: {
+    title: "Grok",
+    colors: {
+      light: [
+        "#fff1f2", // rose-50
+        "#fecdd3", // rose-200
+        "#fda4af", // rose-300
+        "#f43f5e", // rose-500
+        "#be123c", // rose-700
+      ],
+      dark: [
+        "#4c0519", // rose-950
+        "#9f1239", // rose-800
+        "#be123c", // rose-700
+        "#f43f5e", // rose-500
+        "#fecdd3", // rose-200
+      ],
+    },
+  },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Open Code / Pi Coding Agent / Trae",
+      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae",
     titleCaption: "Total usage from",
     colors: {
       light: [

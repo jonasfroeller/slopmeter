@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, Pi Coding Agent, and Trae for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, and Trae for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -61,6 +61,7 @@ slopmeter --codex
 slopmeter --cursor
 slopmeter --antigravity
 slopmeter --gemini
+slopmeter --grok
 slopmeter --opencode
 slopmeter --pi
 slopmeter --trae

@@ -13,6 +13,7 @@ export interface ProviderSelectionValues {
   opencode: boolean;
   pi: boolean;
   trae: boolean;
+  grok: boolean;
 }
 
 const outputProviderIds: ProviderId[] = [
@@ -25,6 +26,7 @@ const outputProviderIds: ProviderId[] = [
   "opencode",
   "pi",
   "trae",
+  "grok",
 ];
 
 

@@ -1,6 +1,6 @@
 # slopmeter
 
-`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Open Code, Pi Coding Agent, and Trae usage data and generates a contribution-style heatmap for the rolling past year.
+`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, and Trae usage data and generates a contribution-style heatmap for the rolling past year.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ slopmeter
 ## Usage
 
 ```bash
-slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--opencode] [--pi] [--trae] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 ```
 
 By default, the CLI:
@@ -42,6 +42,7 @@ By default, the CLI:
 - `--cursor`: include only Cursor data
 - `--antigravity`: include only Antigravity data
 - `--gemini`: include only Gemini CLI data
+- `--grok`: include only Grok data
 - `--opencode`: include only Open Code data
 - `--pi`: include only Pi Coding Agent data
 - `--trae`: include only Trae data

@@ -14,6 +14,7 @@ import {
 import { isOpenCodeAvailable, loadOpenCodeRows } from "./lib/open-code";
 import { isPiAvailable, loadPiRows } from "./lib/pi";
 import { isTraeAvailable, loadTraeRows } from "./lib/trae";
+import { isGrokAvailable, loadGrokRows } from "./lib/grok";
 import { hasUsage, mergeUsageSummaries } from "./lib/utils";
 
 export { defaultProviderIds, providerIds, providerStatusLabel, type ProviderId };
@@ -39,6 +40,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     codex: false,
     cursor: false,
     gemini: false,
+    grok: false,
     opencode: false,
     pi: false,
     trae: false,
@@ -59,6 +61,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isCursorAvailable();
     case "gemini":
       return isGeminiAvailable();
+    case "grok":
+      return isGrokAvailable();
     case "opencode":
       return isOpenCodeAvailable();
     case "pi":
@@ -115,6 +119,7 @@ export async function aggregateUsage({
     codex: null,
     cursor: null,
     gemini: null,
+    grok: null,
     opencode: null,
     pi: null,
     trae: null,
@@ -142,6 +147,9 @@ export async function aggregateUsage({
         break;
       case "gemini":
         summary = await loadGeminiRows(start, end);
+        break;
+      case "grok":
+        summary = await loadGrokRows(start, end);
         break;
       case "opencode":
         summary = await loadOpenCodeRows(start, end);
