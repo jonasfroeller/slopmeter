@@ -199,6 +199,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  fx: {
+    title: "Vercel FX",
+    colors: {
+      light: [
+        "#f8fafc", // slate-50
+        "#cbd5e1", // slate-300
+        "#94a3b8", // slate-400
+        "#475569", // slate-600
+        "#1e293b", // slate-800
+      ],
+      dark: [
+        "#020617", // slate-950
+        "#1e293b", // slate-800
+        "#334155", // slate-700
+        "#94a3b8", // slate-400
+        "#e2e8f0", // slate-200
+      ],
+    },
+  },
   freebuff: {
     title: "Freebuff",
     colors: {
@@ -353,7 +372,7 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
   },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Continue / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
+      "Antigravity / Amp / Claude Code / Codex / Continue / Cursor / Vercel FX / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
     titleCaption: "Total usage from",
     colors: {
       light: [

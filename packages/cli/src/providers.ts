@@ -6,6 +6,7 @@ import { isCodexAvailable, loadCodexRows } from "./lib/codex";
 import { isContinueAvailable, loadContinueRows } from "./lib/continue";
 import { isCursorAvailable, loadCursorRows } from "./lib/cursor";
 import { isFreebuffAvailable, loadFreebuffRows } from "./lib/freebuff";
+import { isFxAvailable, loadFxRows } from "./lib/fx";
 import { isGeminiAvailable, loadGeminiRows } from "./lib/gemini";
 import {
   defaultProviderIds,
@@ -44,6 +45,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     codex: false,
     continue: false,
     cursor: false,
+    fx: false,
     freebuff: false,
     gemini: false,
     grok: false,
@@ -69,6 +71,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isContinueAvailable();
     case "cursor":
       return isCursorAvailable();
+    case "fx":
+      return isFxAvailable();
     case "freebuff":
       return isFreebuffAvailable();
     case "gemini":
@@ -135,6 +139,7 @@ export async function aggregateUsage({
     codex: null,
     continue: null,
     cursor: null,
+    fx: null,
     freebuff: null,
     gemini: null,
     grok: null,
@@ -167,6 +172,9 @@ export async function aggregateUsage({
         break;
       case "cursor":
         summary = await loadCursorRows(start, end);
+        break;
+      case "fx":
+        summary = await loadFxRows(start, end);
         break;
       case "freebuff":
         summary = await loadFreebuffRows(start, end);

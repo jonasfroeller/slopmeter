@@ -5,6 +5,7 @@ export type UsageProviderId =
   | "codex"
   | "continue"
   | "cursor"
+  | "fx"
   | "freebuff"
   | "gemini"
   | "opencode"
