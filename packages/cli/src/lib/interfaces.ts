@@ -8,7 +8,8 @@ export type ProviderId =
   | "opencode"
   | "pi"
   | "trae"
-  | "grok";
+  | "grok"
+  | "windsurf";
 
 export const providerIds: ProviderId[] = [
   "antigravity",
@@ -21,6 +22,7 @@ export const providerIds: ProviderId[] = [
   "pi",
   "trae",
   "grok",
+  "windsurf",
 ];
 
 export const defaultProviderIds: ProviderId[] = ["claude", "codex", "cursor"];
@@ -36,4 +38,5 @@ export const providerStatusLabel: Record<ProviderId, string> = {
   opencode: "Open Code",
   pi: "Pi Coding Agent",
   trae: "Trae",
+  windsurf: "Windsurf",
 };

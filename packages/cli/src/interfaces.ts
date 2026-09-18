@@ -9,8 +9,8 @@ export type UsageProviderId =
   | "pi"
   | "trae"
   | "grok"
+  | "windsurf"
   | "all";
-
 
 export interface UsageSummary {
   provider: UsageProviderId;

@@ -275,9 +275,28 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  windsurf: {
+    title: "Windsurf",
+    colors: {
+      light: [
+        "#f0f9ff", // sky-50
+        "#bae6fd", // sky-200
+        "#38bdf8", // sky-400
+        "#0284c7", // sky-600
+        "#0369a1", // sky-700
+      ],
+      dark: [
+        "#082f49", // sky-950
+        "#075985", // sky-800
+        "#0284c7", // sky-600
+        "#38bdf8", // sky-400
+        "#bae6fd", // sky-200
+      ],
+    },
+  },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae",
+      "Antigravity / Amp / Claude Code / Codex / Cursor / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf",
     titleCaption: "Total usage from",
     colors: {
       light: [

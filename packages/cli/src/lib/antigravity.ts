@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -7,8 +7,34 @@ import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import type { UsageSummary } from "../interfaces";
 import {
+  type CodeiumConnectionInfo,
+  aggregateCodeiumDebugUsage,
+  aggregateCodeiumTrajectoryUsage,
+  callLanguageServerRpc,
+  chooseWorkingHttpPort,
+  collectDebugStepMessages,
+  decodeUtf8,
+  encodeGetUserTrajectoryDebugRequest,
+  extractStepModelUsagePayloads,
+  formatCodeiumModelName,
+  getNetstatListeningPortsByPid,
+  getProtoBytes,
+  getRepeatedProtoBytes,
+  mergeModelLabelMaps,
+  mergeTrajectoryIds,
+  parseCsrfTokenFromCommandLine,
+  parseGeneratorMetadataUsage,
+  parseGetAllCascadeTrajectoriesResponse,
+  parseGetCascadeModelConfigDataResponse,
+  parseGetCommandModelConfigsResponse,
+  parseModelUsageStats,
+  parseProtoFields,
+  parseTimestamp,
+  parseUnixLanguageServerProcesses,
+  parseWindowsProcessJsonOutput,
+} from "./codeium-rpc";
+import {
   type DailyTotalsByDate,
-  type DailyTokenTotals,
   type ModelTokenTotals,
   addDailyTokenTotals,
   addModelTokenTotals,
@@ -19,7 +45,6 @@ import {
 } from "./utils";
 
 const execFileAsync = promisify(execFile);
-const textDecoder = new TextDecoder();
 
 const ANTIGRAVITY_CONFIG_DIR_ENV = "ANTIGRAVITY_CONFIG_DIR";
 const ANTIGRAVITY_CONVERSATIONS_DIR_ENV = "ANTIGRAVITY_CONVERSATIONS_DIR";
@@ -42,66 +67,12 @@ const ANTIGRAVITY_TRAJECTORY_SUMMARY_KEYS = [
 
 const DEFAULT_MAX_TRAJECTORIES = 1_000;
 const DEFAULT_MAX_STEP_PAGES = 100;
-const REQUEST_TIMEOUT_MS = 3_500;
 const CONNECTION_CACHE_MS = 10_000;
-const STEP_PAGE_SIZE = 20;
-const CSRF_HEADER = "x-codeium-csrf-token";
-const RPC_CONTENT_TYPE = "application/proto";
-
-type RpcMethod =
-  | "GetAllCascadeTrajectories"
-  | "GetCascadeModelConfigData"
-  | "GetCommandModelConfigs"
-  | "GetUserTrajectoryDebug"
-  | "GetUserStatus"
-  | "GetCascadeTrajectory"
-  | "GetCascadeTrajectorySteps"
-  | "GetCascadeTrajectoryGeneratorMetadata";
-
-interface ProtoField {
-  fieldNumber: number;
-  wireType: number;
-  value: bigint | Uint8Array;
-}
-
-interface AntigravityConnectionInfo {
-  pid: number;
-  httpPort: number;
-  csrfToken: string;
-}
 
 interface AntigravityLogLaunchRecord {
   pid: number;
   httpPort?: number;
   httpsPort?: number;
-}
-
-interface LanguageServerProcessInfo {
-  pid: number;
-  commandLine: string;
-}
-
-interface ParsedStepUsage {
-  date: Date;
-  modelName?: string;
-  tokenTotals: DailyTokenTotals;
-  usageKey: string;
-}
-
-interface ParsedModelUsageStats {
-  modelName: string;
-  tokenTotals: DailyTokenTotals;
-  usageIdentifier?: string;
-}
-
-interface RawStepMessage {
-  rawStep: Uint8Array;
-  rawStepKey: string;
-}
-
-interface CascadeTrajectoryCounts {
-  totalSteps: number;
-  totalGeneratorMetadata: number;
 }
 
 const antigravityModelNames = new Map<number, string>([
@@ -150,10 +121,12 @@ const antigravityModelNames = new Map<number, string>([
   [1298, "Gemini 3.7 Flash (High)"],
   [1318, "Gemini 3.8 Flash (High)"],
 ]);
+const antigravityModelValues = new Set(antigravityModelNames.keys());
 
-let cachedConnectionInfo:
-  | { value: AntigravityConnectionInfo | null; expiresAt: number }
-  | null = null;
+let cachedConnectionInfo: {
+  value: CodeiumConnectionInfo | null;
+  expiresAt: number;
+} | null = null;
 
 function getAntigravityConfigRoots(): string[] {
   const configuredRoot = process.env[ANTIGRAVITY_CONFIG_DIR_ENV]?.trim();
@@ -538,58 +511,6 @@ async function getLatestAntigravityLaunchRecord() {
   return null;
 }
 
-function parseWindowsProcessJsonOutput(content: string) {
-  const trimmed = content.trim();
-
-  if (!trimmed) {
-    return [] as LanguageServerProcessInfo[];
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return [];
-  }
-
-  const rows = Array.isArray(parsed) ? parsed : [parsed];
-  const processes: LanguageServerProcessInfo[] = [];
-
-  for (const row of rows) {
-    if (!row || typeof row !== "object") {
-      continue;
-    }
-
-    const candidate = row as {
-      pid?: unknown;
-      commandLine?: unknown;
-      ProcessId?: unknown;
-      CommandLine?: unknown;
-    };
-    const pidRaw =
-      candidate.pid ?? candidate.ProcessId ?? undefined;
-    const pid = Number(pidRaw);
-    const commandLineRaw = candidate.commandLine ?? candidate.CommandLine;
-
-    if (
-      !Number.isInteger(pid) ||
-      pid <= 0 ||
-      typeof commandLineRaw !== "string" ||
-      commandLineRaw.trim() === ""
-    ) {
-      continue;
-    }
-
-    processes.push({
-      pid,
-      commandLine: commandLineRaw,
-    });
-  }
-
-  return processes;
-}
-
 async function tryExec(command: string, args: string[]) {
   try {
     const { stdout } = await execFileAsync(command, args, {
@@ -644,40 +565,6 @@ async function getWindowsLanguageServerProcesses() {
   return [];
 }
 
-function parseUnixLanguageServerProcesses(content: string) {
-  const processes: LanguageServerProcessInfo[] = [];
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-
-    if (trimmed === "") {
-      continue;
-    }
-
-    const match = trimmed.match(/^(\d+)\s+(.*)$/);
-
-    if (!match) {
-      continue;
-    }
-
-    const pid = Number(match[1]);
-    const commandLine = match[2].trim();
-
-    if (
-      !Number.isInteger(pid) ||
-      pid <= 0 ||
-      commandLine === "" ||
-      !/language_server/i.test(commandLine)
-    ) {
-      continue;
-    }
-
-    processes.push({ pid, commandLine });
-  }
-
-  return processes;
-}
-
 async function getUnixLanguageServerProcesses() {
   const output = await tryExec("ps", ["-ax", "-o", "pid=,command="]);
 
@@ -699,100 +586,6 @@ async function getLanguageServerProcesses() {
       /language_server/i.test(processInfo.commandLine) &&
       /antigravity|codeium|gemini/i.test(processInfo.commandLine),
   );
-}
-
-function parseCsrfTokenFromCommandLine(commandLine: string) {
-  const tokenMatch = commandLine.match(
-    /(?:^|\s)--csrf[_-]token(?:=|\s+)(?:"([^"]+)"|([^\s]+))/i,
-  );
-  const rawToken = tokenMatch?.[1] ?? tokenMatch?.[2];
-
-  if (!rawToken) {
-    return null;
-  }
-
-  const token = rawToken.trim();
-
-  return token === "" ? null : token;
-}
-
-function parsePortFromAddress(localAddress: string) {
-  const trimmed = localAddress.trim();
-
-  if (trimmed === "") {
-    return null;
-  }
-
-  if (trimmed.startsWith("[") && trimmed.includes("]:")) {
-    const start = trimmed.lastIndexOf("]:");
-
-    if (start === -1) {
-      return null;
-    }
-
-    const port = Number(trimmed.slice(start + 2));
-
-    return Number.isInteger(port) && port > 0 ? port : null;
-  }
-
-  const colonIndex = trimmed.lastIndexOf(":");
-
-  if (colonIndex === -1) {
-    return null;
-  }
-
-  const port = Number(trimmed.slice(colonIndex + 1));
-
-  return Number.isInteger(port) && port > 0 ? port : null;
-}
-
-function parseNetstatListeningPortsByPid(content: string, pid: number) {
-  const ports = new Set<number>();
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-
-    if (!trimmed || !trimmed.startsWith("TCP")) {
-      continue;
-    }
-
-    const parts = trimmed.split(/\s+/);
-
-    if (parts.length < 5) {
-      continue;
-    }
-
-    const parsedPid = Number(parts.at(-1));
-
-    if (!Number.isInteger(parsedPid) || parsedPid !== pid) {
-      continue;
-    }
-
-    const remoteAddress = parts[2] ?? "";
-
-    if (!remoteAddress.endsWith(":0")) {
-      continue;
-    }
-
-    const localAddress = parts[1];
-    const port = parsePortFromAddress(localAddress);
-
-    if (port !== null) {
-      ports.add(port);
-    }
-  }
-
-  return [...ports];
-}
-
-async function getNetstatListeningPortsByPid(pid: number) {
-  const output = await tryExec("netstat", ["-ano", "-p", "tcp"]);
-
-  if (!output) {
-    return [];
-  }
-
-  return parseNetstatListeningPortsByPid(output, pid);
 }
 
 function parsePidEnvVar() {
@@ -819,339 +612,18 @@ function parseHttpPortEnvVar() {
   return Number.isInteger(port) && port > 0 ? port : null;
 }
 
-function encodeVarint(value: bigint | number) {
-  let current = typeof value === "number" ? BigInt(value) : value;
-
-  if (current < 0n) {
-    current = 0n;
-  }
-
-  const bytes: number[] = [];
-
-  for (;;) {
-    const currentByte = Number(current & 0x7fn);
-
-    current >>= 7n;
-
-    if (current === 0n) {
-      bytes.push(currentByte);
-      break;
-    }
-
-    bytes.push(currentByte | 0x80);
-  }
-
-  return Uint8Array.from(bytes);
-}
-
-function concatByteArrays(chunks: Uint8Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return merged;
-}
-
-function encodeFieldKey(fieldNumber: number, wireType: number) {
-  return encodeVarint(BigInt((fieldNumber << 3) | wireType));
-}
-
-function encodeStringField(fieldNumber: number, value: string) {
-  const encodedValue = new TextEncoder().encode(value);
-
-  return concatByteArrays([
-    encodeFieldKey(fieldNumber, 2),
-    encodeVarint(encodedValue.length),
-    encodedValue,
-  ]);
-}
-
-function encodeUint32Field(fieldNumber: number, value: number) {
-  return concatByteArrays([
-    encodeFieldKey(fieldNumber, 0),
-    encodeVarint(value),
-  ]);
-}
-
-function encodeGetCascadeTrajectoryRequest(cascadeId: string) {
-  return encodeStringField(1, cascadeId);
-}
-
-function encodeGetCascadeTrajectoryStepsRequest(cascadeId: string, offset: number) {
-  return concatByteArrays([
-    encodeStringField(1, cascadeId),
-    encodeUint32Field(2, offset),
-  ]);
-}
-
-function encodeGetCascadeTrajectoryGeneratorMetadataRequest(
-  cascadeId: string,
-  offset: number,
-  includeMessages: boolean,
-) {
-  return concatByteArrays([
-    encodeStringField(1, cascadeId),
-    encodeUint32Field(2, offset),
-    encodeUint32Field(3, includeMessages ? 1 : 0),
-  ]);
-}
-
-function readVarint(bytes: Uint8Array, offset: number) {
-  let value = 0n;
-  let shift = 0n;
-  let index = offset;
-
-  while (index < bytes.length) {
-    const byte = bytes[index];
-
-    value |= BigInt(byte & 0x7f) << shift;
-    index += 1;
-
-    if ((byte & 0x80) === 0) {
-      return { value, nextOffset: index };
-    }
-
-    shift += 7n;
-
-    if (shift > 70n) {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-function parseProtoFields(bytes: Uint8Array) {
-  const fields: ProtoField[] = [];
-  let offset = 0;
-
-  while (offset < bytes.length) {
-    const key = readVarint(bytes, offset);
-
-    if (!key) {
-      break;
-    }
-
-    offset = key.nextOffset;
-
-    const fieldNumber = Number(key.value >> 3n);
-    const wireType = Number(key.value & 0x7n);
-
-    if (fieldNumber <= 0) {
-      break;
-    }
-
-    if (wireType === 0) {
-      const value = readVarint(bytes, offset);
-
-      if (!value) {
-        break;
-      }
-
-      fields.push({
-        fieldNumber,
-        wireType,
-        value: value.value,
-      });
-      offset = value.nextOffset;
-      continue;
-    }
-
-    if (wireType === 2) {
-      const lengthResult = readVarint(bytes, offset);
-
-      if (!lengthResult) {
-        break;
-      }
-
-      const messageLength = Number(lengthResult.value);
-
-      if (
-        !Number.isInteger(messageLength) ||
-        messageLength < 0 ||
-        lengthResult.nextOffset + messageLength > bytes.length
-      ) {
-        break;
-      }
-
-      const start = lengthResult.nextOffset;
-      const end = start + messageLength;
-
-      fields.push({
-        fieldNumber,
-        wireType,
-        value: bytes.subarray(start, end),
-      });
-      offset = end;
-      continue;
-    }
-
-    if (wireType === 1) {
-      const nextOffset = offset + 8;
-
-      if (nextOffset > bytes.length) {
-        break;
-      }
-
-      offset = nextOffset;
-      continue;
-    }
-
-    if (wireType === 5) {
-      const nextOffset = offset + 4;
-
-      if (nextOffset > bytes.length) {
-        break;
-      }
-
-      offset = nextOffset;
-      continue;
-    }
-
-    break;
-  }
-
-  return fields;
-}
-
-function getProtoVarint(fields: ProtoField[], fieldNumber: number) {
-  for (const field of fields) {
-    if (field.fieldNumber === fieldNumber && field.wireType === 0) {
-      return field.value as bigint;
-    }
-  }
-
-  return undefined;
-}
-
-function getProtoBytes(fields: ProtoField[], fieldNumber: number) {
-  for (const field of fields) {
-    if (field.fieldNumber === fieldNumber && field.wireType === 2) {
-      return field.value as Uint8Array;
-    }
-  }
-
-  return undefined;
-}
-
-function getRepeatedProtoBytes(fields: ProtoField[], fieldNumber: number) {
-  const values: Uint8Array[] = [];
-
-  for (const field of fields) {
-    if (field.fieldNumber === fieldNumber && field.wireType === 2) {
-      values.push(field.value as Uint8Array);
-    }
-  }
-
-  return values;
-}
-
-function protoVarintToNumber(value: bigint | undefined) {
-  if (value === undefined) {
-    return 0;
-  }
-
-  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  return Number(value);
-}
-
-function decodeUtf8(value: Uint8Array | undefined) {
-  if (!value || value.length === 0) {
-    return undefined;
-  }
-
-  const decoded = textDecoder.decode(value).trim();
-
-  return decoded === "" ? undefined : decoded;
-}
-
-function parseTimestamp(rawTimestamp: Uint8Array | undefined) {
-  if (!rawTimestamp) {
-    return null;
-  }
-
-  const timestampFields = parseProtoFields(rawTimestamp);
-  const seconds = protoVarintToNumber(getProtoVarint(timestampFields, 1));
-  const nanos = protoVarintToNumber(getProtoVarint(timestampFields, 2));
-  const nanosComponent = Math.max(0, Math.min(999_999_999, nanos));
-  const epochMillis = seconds * 1_000 + Math.floor(nanosComponent / 1_000_000);
-  const parsed = new Date(epochMillis);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function decodeAntigravityModelName(modelValue: number) {
-  const knownName = antigravityModelNames.get(modelValue);
+  const configuredName = antigravityModelNames.get(modelValue);
 
-  if (knownName) {
-    return knownName;
+  if (configuredName) {
+    return configuredName;
   }
 
-  if (modelValue >= 1000 && modelValue <= 2000) {
-    return `MODEL_PLACEHOLDER_M${modelValue - 1000}`;
+  if (modelValue >= 1_000 && modelValue <= 2_000) {
+    return `MODEL_PLACEHOLDER_M${modelValue - 1_000}`;
   }
 
   return `MODEL_${modelValue}`;
-}
-
-function formatAntigravityModelName(rawName: string) {
-  const trimmed = rawName.trim();
-  const placeholderMatch = trimmed.match(/^MODEL_PLACEHOLDER_M(\d+)$/);
-
-  if (placeholderMatch) {
-    return `Unknown model (M${placeholderMatch[1]})`;
-  }
-
-  if (!trimmed.startsWith("MODEL_")) {
-    return trimmed;
-  }
-
-  const rawTokens = trimmed
-    .slice("MODEL_".length)
-    .split("_")
-    .filter((token) => token !== "");
-  const formattedTokens: string[] = [];
-
-  for (let index = 0; index < rawTokens.length; index += 1) {
-    const token = rawTokens[index];
-    const nextToken = rawTokens[index + 1];
-
-    if (
-      index + 1 < rawTokens.length &&
-      /^\d+$/.test(token) &&
-      /^\d+$/.test(nextToken)
-    ) {
-      formattedTokens.push(`${token}.${nextToken}`);
-      index += 1;
-      continue;
-    }
-
-    if (
-      /^(GPT|OSS|BYOM|API|UI|ID|URL|CPU|GPU|LLM|V\d+[A-Z0-9]*)$/.test(token)
-    ) {
-      formattedTokens.push(token);
-      continue;
-    }
-
-    if (/^\d+[A-Z]+$/.test(token)) {
-      formattedTokens.push(token);
-      continue;
-    }
-
-    formattedTokens.push(
-      token.charAt(0).toUpperCase() + token.slice(1).toLowerCase(),
-    );
-  }
-
-  return formattedTokens.join(" ");
 }
 
 function resolveAntigravityModelName(
@@ -1161,538 +633,10 @@ function resolveAntigravityModelName(
   const dynamicLabel = dynamicModelLabels.get(modelValue)?.trim();
 
   if (dynamicLabel) {
-    return formatAntigravityModelName(dynamicLabel);
+    return formatCodeiumModelName(dynamicLabel);
   }
 
-  return formatAntigravityModelName(decodeAntigravityModelName(modelValue));
-}
-
-function parseModelUsageIdentifier(modelUsageFields: ProtoField[]) {
-  const messageId = decodeUtf8(getProtoBytes(modelUsageFields, 7));
-  const responseId = decodeUtf8(getProtoBytes(modelUsageFields, 11));
-  const providerAssignedMessageId = decodeUtf8(
-    getProtoBytes(modelUsageFields, 12),
-  );
-  const parts: string[] = [];
-
-  if (messageId) {
-    parts.push(`m:${messageId}`);
-  }
-
-  if (responseId) {
-    parts.push(`r:${responseId}`);
-  }
-
-  if (providerAssignedMessageId) {
-    parts.push(`p:${providerAssignedMessageId}`);
-  }
-
-  return parts.length > 0 ? parts.join("|") : undefined;
-}
-
-function parseModelUsageStats(
-  rawModelUsage: Uint8Array | undefined,
-  dynamicModelLabels: ReadonlyMap<number, string>,
-): ParsedModelUsageStats | null {
-  if (!rawModelUsage) {
-    return null;
-  }
-
-  const modelUsageFields = parseProtoFields(rawModelUsage);
-  const modelValue = protoVarintToNumber(getProtoVarint(modelUsageFields, 1));
-  const inputTokens = protoVarintToNumber(getProtoVarint(modelUsageFields, 2));
-  const outputTokens = protoVarintToNumber(getProtoVarint(modelUsageFields, 3));
-  const cacheWriteTokens = protoVarintToNumber(
-    getProtoVarint(modelUsageFields, 4),
-  );
-  const cacheReadTokens = protoVarintToNumber(
-    getProtoVarint(modelUsageFields, 5),
-  );
-  const thinkingOutputTokens = protoVarintToNumber(
-    getProtoVarint(modelUsageFields, 9),
-  );
-  const responseOutputTokens = protoVarintToNumber(
-    getProtoVarint(modelUsageFields, 10),
-  );
-  const resolvedOutput =
-    responseOutputTokens + thinkingOutputTokens > 0
-      ? responseOutputTokens + thinkingOutputTokens
-      : outputTokens;
-  const input = inputTokens + cacheReadTokens + cacheWriteTokens;
-  const total = input + resolvedOutput;
-
-  if (total <= 0) {
-    return null;
-  }
-
-  return {
-    modelName: resolveAntigravityModelName(modelValue, dynamicModelLabels),
-    tokenTotals: {
-      input,
-      output: resolvedOutput,
-      cache: {
-        input: cacheReadTokens,
-        output: cacheWriteTokens,
-      },
-      total,
-    } satisfies DailyTokenTotals,
-    usageIdentifier: parseModelUsageIdentifier(modelUsageFields),
-  };
-}
-
-function extractStepModelUsagePayloads(metadataFields: ProtoField[]) {
-  const payloads: Uint8Array[] = [];
-  const directUsage = getProtoBytes(metadataFields, 9);
-
-  if (directUsage) {
-    payloads.push(directUsage);
-  }
-
-  for (const usageContainer of getRepeatedProtoBytes(metadataFields, 28)) {
-    const usageContainerFields = parseProtoFields(usageContainer);
-
-    for (const modelUsagePayload of getRepeatedProtoBytes(usageContainerFields, 2)) {
-      payloads.push(modelUsagePayload);
-    }
-  }
-
-  return payloads;
-}
-
-function parseStepUsages(
-  rawStep: Uint8Array,
-  rawStepKey: string,
-  dynamicModelLabels: ReadonlyMap<number, string>,
-): ParsedStepUsage[] {
-  const stepFields = parseProtoFields(rawStep);
-  const metadata = getProtoBytes(stepFields, 5);
-
-  if (!metadata) {
-    return [];
-  }
-
-  const metadataFields = parseProtoFields(metadata);
-  const date =
-    parseTimestamp(getProtoBytes(metadataFields, 1)) ??
-    parseTimestamp(getProtoBytes(metadataFields, 6)) ??
-    parseTimestamp(getProtoBytes(metadataFields, 8));
-
-  if (!date) {
-    return [];
-  }
-
-  const modelUsagePayloads = extractStepModelUsagePayloads(metadataFields);
-  const usages: ParsedStepUsage[] = [];
-  const seenUsageKeys = new Set<string>();
-
-  for (const [index, modelUsagePayload] of modelUsagePayloads.entries()) {
-    const modelUsage = parseModelUsageStats(modelUsagePayload, dynamicModelLabels);
-
-    if (!modelUsage) {
-      continue;
-    }
-
-    const usageKey = modelUsage.usageIdentifier ?? `raw:${rawStepKey}:${index}`;
-
-    if (seenUsageKeys.has(usageKey)) {
-      continue;
-    }
-
-    seenUsageKeys.add(usageKey);
-    usages.push({
-      date,
-      modelName: modelUsage.modelName,
-      tokenTotals: modelUsage.tokenTotals,
-      usageKey,
-    });
-  }
-
-  return usages;
-}
-
-function parseModelValueFromModelOrAlias(rawModelOrAlias: Uint8Array | undefined) {
-  if (!rawModelOrAlias) {
-    return null;
-  }
-
-  const stack: Array<{ bytes: Uint8Array; depth: number }> = [
-    { bytes: rawModelOrAlias, depth: 0 },
-  ];
-  const candidates: number[] = [];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-
-    if (!current || current.depth > 3) {
-      continue;
-    }
-
-    const fields = parseProtoFields(current.bytes);
-
-    for (const field of fields) {
-      if (field.wireType === 0) {
-        const value = protoVarintToNumber(field.value as bigint);
-
-        if (value >= 100 && value <= 5_000) {
-          candidates.push(value);
-        }
-      } else if (field.wireType === 2) {
-        stack.push({
-          bytes: field.value as Uint8Array,
-          depth: current.depth + 1,
-        });
-      }
-    }
-  }
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  const preferredKnown = candidates.find((candidate) =>
-    antigravityModelNames.has(candidate),
-  );
-
-  if (preferredKnown) {
-    return preferredKnown;
-  }
-
-  const preferredPlaceholder = candidates.find(
-    (candidate) => candidate >= 1_000 && candidate <= 1_500,
-  );
-
-  return preferredPlaceholder ?? candidates[0];
-}
-
-function parseModelValueFromConfigKey(configKey: string | undefined) {
-  if (!configKey) {
-    return null;
-  }
-
-  const trimmed = configKey.trim();
-
-  if (trimmed === "") {
-    return null;
-  }
-
-  const numericMatch = trimmed.match(/^(\d+)$/);
-
-  if (numericMatch) {
-    const numericValue = Number(numericMatch[1]);
-
-    return Number.isInteger(numericValue) && numericValue > 0
-      ? numericValue
-      : null;
-  }
-
-  const placeholderMatch = trimmed.match(
-    /^(?:MODEL_PLACEHOLDER_M|M)(\d+)$/i,
-  );
-
-  if (!placeholderMatch) {
-    return null;
-  }
-
-  const placeholderIndex = Number(placeholderMatch[1]);
-
-  return Number.isInteger(placeholderIndex) && placeholderIndex >= 0
-    ? 1_000 + placeholderIndex
-    : null;
-}
-
-function collectPlainProtoStrings(fields: ProtoField[]) {
-  const strings: string[] = [];
-
-  for (const field of fields) {
-    if (field.wireType !== 2 || !(field.value instanceof Uint8Array)) {
-      continue;
-    }
-
-    const rawBytes = field.value;
-
-    if (parseProtoFields(rawBytes).length > 0) {
-      continue;
-    }
-
-    const decoded = decodeUtf8(rawBytes);
-
-    if (decoded) {
-      strings.push(decoded);
-    }
-  }
-
-  return strings;
-}
-
-function pickModelLabelCandidate(candidates: string[]) {
-  for (const candidate of candidates) {
-    if (parseModelValueFromConfigKey(candidate) !== null) {
-      continue;
-    }
-
-    if (!/[A-Za-z]/.test(candidate)) {
-      continue;
-    }
-
-    if (candidate.length < 3 || candidate.length > 120) {
-      continue;
-    }
-
-    return candidate;
-  }
-
-  return undefined;
-}
-
-function parseClientModelConfigEntry(rawEntry: Uint8Array) {
-  const entryFields = parseProtoFields(rawEntry);
-  const keyOrLabel = decodeUtf8(getProtoBytes(entryFields, 1));
-  const nestedConfig = getProtoBytes(entryFields, 2);
-  const modelFromKey = parseModelValueFromConfigKey(keyOrLabel);
-
-  const modelValueFromAlias = parseModelValueFromModelOrAlias(
-    getProtoBytes(entryFields, 2),
-  );
-
-  if (nestedConfig) {
-    const nestedFields = parseProtoFields(nestedConfig);
-    const nestedLabel =
-      decodeUtf8(getProtoBytes(nestedFields, 1)) ??
-      pickModelLabelCandidate(collectPlainProtoStrings(nestedFields));
-    const nestedModelValue =
-      parseModelValueFromModelOrAlias(getProtoBytes(nestedFields, 2)) ??
-      parseModelValueFromModelOrAlias(nestedConfig) ??
-      modelFromKey;
-
-    if (nestedLabel && nestedModelValue !== null) {
-      return { modelValue: nestedModelValue, label: nestedLabel };
-    }
-  }
-
-  if (keyOrLabel) {
-    if (modelValueFromAlias !== null) {
-      return { modelValue: modelValueFromAlias, label: keyOrLabel };
-    }
-
-    const directModelValue = protoVarintToNumber(getProtoVarint(entryFields, 2));
-
-    if (directModelValue > 0) {
-      return { modelValue: directModelValue, label: keyOrLabel };
-    }
-  }
-
-  return null;
-}
-
-function parseGetCascadeModelConfigDataResponse(rawResponse: Uint8Array) {
-  const labelsByModel = new Map<number, string>();
-  const stack: Array<{ bytes: Uint8Array; depth: number }> = [
-    { bytes: rawResponse, depth: 0 },
-  ];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-
-    if (!current || current.depth > 6) {
-      continue;
-    }
-
-    const fields = parseProtoFields(current.bytes);
-
-    for (const field of fields) {
-      if (field.wireType !== 2) {
-        continue;
-      }
-
-      const childBytes = field.value as Uint8Array;
-      const entry = parseClientModelConfigEntry(childBytes);
-
-      if (entry) {
-        labelsByModel.set(entry.modelValue, entry.label);
-      }
-
-      stack.push({ bytes: childBytes, depth: current.depth + 1 });
-    }
-  }
-
-  return labelsByModel;
-}
-
-function parseGetCommandModelConfigsResponse(rawResponse: Uint8Array) {
-  return parseGetCascadeModelConfigDataResponse(rawResponse);
-}
-
-function parseGetAllCascadeTrajectoriesResponse(rawResponse: Uint8Array) {
-  const ids: string[] = [];
-  const seen = new Set<string>();
-  const responseFields = parseProtoFields(rawResponse);
-  const mapEntries = getRepeatedProtoBytes(responseFields, 1);
-
-  for (const mapEntry of mapEntries) {
-    const mapEntryFields = parseProtoFields(mapEntry);
-    const cascadeId = decodeUtf8(getProtoBytes(mapEntryFields, 1));
-
-    if (!cascadeId || seen.has(cascadeId)) {
-      continue;
-    }
-
-    seen.add(cascadeId);
-    ids.push(cascadeId);
-  }
-
-  return ids;
-}
-
-function parseGetCascadeTrajectoryResponse(rawResponse: Uint8Array) {
-  const responseFields = parseProtoFields(rawResponse);
-
-  return {
-    totalSteps: protoVarintToNumber(getProtoVarint(responseFields, 3)),
-    totalGeneratorMetadata: protoVarintToNumber(
-      getProtoVarint(responseFields, 4),
-    ),
-  } satisfies CascadeTrajectoryCounts;
-}
-
-function parseGetCascadeTrajectoryStepsResponse(rawResponse: Uint8Array) {
-  const responseFields = parseProtoFields(rawResponse);
-
-  return getRepeatedProtoBytes(responseFields, 1);
-}
-
-function parseGetCascadeTrajectoryGeneratorMetadataResponse(
-  rawResponse: Uint8Array,
-) {
-  const responseFields = parseProtoFields(rawResponse);
-
-  return getRepeatedProtoBytes(responseFields, 1);
-}
-
-function encodeGetUserTrajectoryDebugRequest(includeAllTrajectories: boolean) {
-  return encodeUint32Field(1, includeAllTrajectories ? 1 : 0);
-}
-
-function collectDebugStepMessages(rawResponse: Uint8Array) {
-  const foundSteps: RawStepMessage[] = [];
-  const seenMessages = new Set<string>();
-  const stack: Array<{ bytes: Uint8Array; depth: number }> = [
-    { bytes: rawResponse, depth: 0 },
-  ];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-
-    if (!current || current.depth > 8) {
-      continue;
-    }
-
-    const fields = parseProtoFields(current.bytes);
-
-    if (fields.length === 0) {
-      continue;
-    }
-
-    for (const field of fields) {
-      if (field.wireType !== 2) {
-        continue;
-      }
-
-      const child = field.value as Uint8Array;
-
-      if (child.length === 0) {
-        continue;
-      }
-
-      const childFields = parseProtoFields(child);
-
-      if (childFields.length === 0) {
-        continue;
-      }
-
-      const rawStepKey = Buffer.from(child).toString("base64");
-
-      if (seenMessages.has(rawStepKey)) {
-        continue;
-      }
-
-      seenMessages.add(rawStepKey);
-
-      if (getProtoBytes(childFields, 5)) {
-        foundSteps.push({ rawStep: child, rawStepKey });
-      }
-
-      stack.push({ bytes: child, depth: current.depth + 1 });
-    }
-  }
-
-  return foundSteps;
-}
-
-async function callLanguageServerRpc(
-  connection: AntigravityConnectionInfo,
-  method: RpcMethod,
-  body = new Uint8Array(),
-) {
-  const url = `http://127.0.0.1:${connection.httpPort}/exa.language_server_pb.LanguageServerService/${method}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        [CSRF_HEADER]: connection.csrfToken,
-        "content-type": RPC_CONTENT_TYPE,
-      },
-      body,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Antigravity RPC ${method} failed with ${response.status} ${response.statusText}`,
-      );
-    }
-
-    return new Uint8Array(await response.arrayBuffer());
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function isHttpPortUsable(
-  pid: number,
-  csrfToken: string,
-  candidatePort: number,
-) {
-  try {
-    await callLanguageServerRpc(
-      { pid, csrfToken, httpPort: candidatePort },
-      "GetUserStatus",
-    );
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function chooseWorkingHttpPort(
-  pid: number,
-  csrfToken: string,
-  candidatePorts: number[],
-) {
-  const uniqueCandidatePorts = [...new Set(candidatePorts)].filter(
-    (candidate) => Number.isInteger(candidate) && candidate > 0,
-  );
-
-  for (const candidatePort of uniqueCandidatePorts) {
-    if (await isHttpPortUsable(pid, csrfToken, candidatePort)) {
-      return candidatePort;
-    }
-  }
-
-  return null;
+  return formatCodeiumModelName(decodeAntigravityModelName(modelValue));
 }
 
 async function discoverAntigravityConnectionInfo() {
@@ -1705,7 +649,7 @@ async function discoverAntigravityConnectionInfo() {
       pid: envPid,
       csrfToken: envCsrfToken,
       httpPort: envHttpPort,
-    } satisfies AntigravityConnectionInfo;
+    } satisfies CodeiumConnectionInfo;
   }
 
   const [launchRecord, processes] = await Promise.all([
@@ -1748,25 +692,27 @@ async function discoverAntigravityConnectionInfo() {
     }
   }
 
-  for (const netstatPort of await getNetstatListeningPortsByPid(processInfo.pid)) {
-    candidatePorts.push(netstatPort);
+  const netstatPorts = await getNetstatListeningPortsByPid(processInfo.pid);
+
+  for (const port of netstatPorts) {
+    candidatePorts.push(port);
   }
 
-  const httpPort = await chooseWorkingHttpPort(
+  const workingHttpPort = await chooseWorkingHttpPort(
     processInfo.pid,
     csrfToken,
     candidatePorts,
   );
 
-  if (!httpPort) {
+  if (!workingHttpPort) {
     return null;
   }
 
   return {
     pid: processInfo.pid,
     csrfToken,
-    httpPort,
-  } satisfies AntigravityConnectionInfo;
+    httpPort: workingHttpPort,
+  } satisfies CodeiumConnectionInfo;
 }
 
 async function getAntigravityConnectionInfo() {
@@ -1786,7 +732,7 @@ async function getAntigravityConnectionInfo() {
   return value;
 }
 
-async function getCascadeIds(connection: AntigravityConnectionInfo) {
+async function getCascadeIds(connection: CodeiumConnectionInfo) {
   const response = await callLanguageServerRpc(
     connection,
     "GetAllCascadeTrajectories",
@@ -1795,45 +741,25 @@ async function getCascadeIds(connection: AntigravityConnectionInfo) {
   return parseGetAllCascadeTrajectoriesResponse(response);
 }
 
-function mergeTrajectoryIds(...sources: string[][]) {
-  const merged: string[] = [];
-  const seen = new Set<string>();
-
-  for (const source of sources) {
-    for (const rawId of source) {
-      const trajectoryId = rawId.trim();
-
-      if (trajectoryId === "" || seen.has(trajectoryId)) {
-        continue;
-      }
-
-      seen.add(trajectoryId);
-      merged.push(trajectoryId);
-    }
-  }
-
-  return merged;
-}
-
-async function getCascadeModelLabels(connection: AntigravityConnectionInfo) {
+async function getCascadeModelLabels(connection: CodeiumConnectionInfo) {
   const response = await callLanguageServerRpc(
     connection,
     "GetCascadeModelConfigData",
   );
 
-  return parseGetCascadeModelConfigDataResponse(response);
+  return parseGetCascadeModelConfigDataResponse(response, antigravityModelValues);
 }
 
-async function getCommandModelLabels(connection: AntigravityConnectionInfo) {
+async function getCommandModelLabels(connection: CodeiumConnectionInfo) {
   const response = await callLanguageServerRpc(
     connection,
     "GetCommandModelConfigs",
   );
 
-  return parseGetCommandModelConfigsResponse(response);
+  return parseGetCommandModelConfigsResponse(response, antigravityModelValues);
 }
 
-async function getDebugStepMessages(connection: AntigravityConnectionInfo) {
+async function getDebugStepMessages(connection: CodeiumConnectionInfo) {
   const response = await callLanguageServerRpc(
     connection,
     "GetUserTrajectoryDebug",
@@ -1841,364 +767,6 @@ async function getDebugStepMessages(connection: AntigravityConnectionInfo) {
   );
 
   return collectDebugStepMessages(response);
-}
-
-function mergeModelLabelMaps(...maps: ReadonlyMap<number, string>[]) {
-  const merged = new Map<number, string>();
-
-  for (const modelMap of maps) {
-    for (const [modelValue, label] of modelMap) {
-      if (!label || label.trim() === "") {
-        continue;
-      }
-
-      merged.set(modelValue, label);
-    }
-  }
-
-  return merged;
-}
-
-async function getTrajectoryCounts(
-  connection: AntigravityConnectionInfo,
-  trajectoryId: string,
-) {
-  const response = await callLanguageServerRpc(
-    connection,
-    "GetCascadeTrajectory",
-    encodeGetCascadeTrajectoryRequest(trajectoryId),
-  );
-
-  return parseGetCascadeTrajectoryResponse(response);
-}
-
-async function getTrajectoryStepPage(
-  connection: AntigravityConnectionInfo,
-  trajectoryId: string,
-  offset: number,
-) {
-  const response = await callLanguageServerRpc(
-    connection,
-    "GetCascadeTrajectorySteps",
-    encodeGetCascadeTrajectoryStepsRequest(trajectoryId, offset),
-  );
-
-  return parseGetCascadeTrajectoryStepsResponse(response);
-}
-
-async function getTrajectoryGeneratorMetadataPage(
-  connection: AntigravityConnectionInfo,
-  trajectoryId: string,
-  offset: number,
-) {
-  const response = await callLanguageServerRpc(
-    connection,
-    "GetCascadeTrajectoryGeneratorMetadata",
-    encodeGetCascadeTrajectoryGeneratorMetadataRequest(trajectoryId, offset, true),
-  );
-
-  return parseGetCascadeTrajectoryGeneratorMetadataResponse(response);
-}
-
-function parseGeneratorMetadataTimestamp(rawGeneratorMetadata: Uint8Array) {
-  const generatorMetadataFields = parseProtoFields(rawGeneratorMetadata);
-  const rawTimeline = getProtoBytes(generatorMetadataFields, 9);
-
-  if (!rawTimeline) {
-    return null;
-  }
-
-  const timelineFields = parseProtoFields(rawTimeline);
-
-  return (
-    parseTimestamp(getProtoBytes(timelineFields, 4)) ??
-    parseTimestamp(getProtoBytes(timelineFields, 1))
-  );
-}
-
-function parseGeneratorMetadataUsage(
-  rawGeneratorMetadataEntry: Uint8Array,
-  trajectoryId: string,
-  generatorMetadataOffset: number,
-  dynamicModelLabels: ReadonlyMap<number, string>,
-): ParsedStepUsage | null {
-  const entryFields = parseProtoFields(rawGeneratorMetadataEntry);
-  const rawGeneratorMetadata =
-    getProtoBytes(entryFields, 1) ?? rawGeneratorMetadataEntry;
-  const date = parseGeneratorMetadataTimestamp(rawGeneratorMetadata);
-
-  if (!date) {
-    return null;
-  }
-
-  const generatorMetadataFields = parseProtoFields(rawGeneratorMetadata);
-  const modelUsage = parseModelUsageStats(
-    getProtoBytes(generatorMetadataFields, 4),
-    dynamicModelLabels,
-  );
-
-  if (!modelUsage) {
-    return null;
-  }
-
-  return {
-    date,
-    modelName: modelUsage.modelName,
-    tokenTotals: modelUsage.tokenTotals,
-    usageKey:
-      modelUsage.usageIdentifier ??
-      `generator:${trajectoryId}:${generatorMetadataOffset}`,
-  };
-}
-
-async function aggregateTrajectoryUsage(
-  connection: AntigravityConnectionInfo,
-  trajectoryId: string,
-  start: Date,
-  end: Date,
-  recentStart: Date,
-  totals: DailyTotalsByDate,
-  modelTotals: Map<string, ModelTokenTotals>,
-  recentModelTotals: Map<string, ModelTokenTotals>,
-  dynamicModelLabels: ReadonlyMap<number, string>,
-  seenUsageKeys: Set<string>,
-  maxStepPages: number,
-) {
-  let totalSteps = 0;
-  let totalGeneratorMetadata = 0;
-
-  try {
-    const counts = await getTrajectoryCounts(connection, trajectoryId);
-
-    totalSteps = counts.totalSteps;
-    totalGeneratorMetadata = counts.totalGeneratorMetadata;
-  } catch {
-    return;
-  }
-
-  if (totalSteps <= 0 && totalGeneratorMetadata <= 0) {
-    return;
-  }
-
-  const seenRawSteps = new Set<string>();
-
-  for (let pageIndex = 0; pageIndex < maxStepPages; pageIndex += 1) {
-    const offset = pageIndex * STEP_PAGE_SIZE;
-    let stepMessages: Uint8Array[];
-
-    try {
-      stepMessages = await getTrajectoryStepPage(connection, trajectoryId, offset);
-    } catch {
-      break;
-    }
-
-    if (stepMessages.length === 0) {
-      break;
-    }
-
-    let addedRawSteps = 0;
-
-    for (const rawStep of stepMessages) {
-      const stepKey = Buffer.from(rawStep).toString("base64");
-
-      if (seenRawSteps.has(stepKey)) {
-        continue;
-      }
-
-      seenRawSteps.add(stepKey);
-      addedRawSteps += 1;
-
-      for (const parsedUsage of parseStepUsages(
-        rawStep,
-        stepKey,
-        dynamicModelLabels,
-      )) {
-        if (seenUsageKeys.has(parsedUsage.usageKey)) {
-          continue;
-        }
-
-        seenUsageKeys.add(parsedUsage.usageKey);
-
-        if (parsedUsage.date < start || parsedUsage.date > end) {
-          continue;
-        }
-
-        addDailyTokenTotals(
-          totals,
-          parsedUsage.date,
-          parsedUsage.tokenTotals,
-          parsedUsage.modelName,
-        );
-
-        if (!parsedUsage.modelName) {
-          continue;
-        }
-
-        addModelTokenTotals(
-          modelTotals,
-          parsedUsage.modelName,
-          parsedUsage.tokenTotals,
-        );
-
-        if (parsedUsage.date >= recentStart) {
-          addModelTokenTotals(
-            recentModelTotals,
-            parsedUsage.modelName,
-            parsedUsage.tokenTotals,
-          );
-        }
-      }
-    }
-
-    if (totalSteps > 0 && seenRawSteps.size >= totalSteps) {
-      break;
-    }
-
-    if (addedRawSteps === 0 && pageIndex > 0) {
-      break;
-    }
-  }
-
-  const maxGeneratorMetadataPages =
-    totalGeneratorMetadata > 0
-      ? Math.min(
-          maxStepPages,
-          Math.ceil(totalGeneratorMetadata / STEP_PAGE_SIZE),
-        )
-      : maxStepPages;
-
-  for (
-    let generatorPageIndex = 0;
-    generatorPageIndex < maxGeneratorMetadataPages;
-    generatorPageIndex += 1
-  ) {
-    const offset = generatorPageIndex * STEP_PAGE_SIZE;
-    let generatorMetadataEntries: Uint8Array[];
-
-    try {
-      generatorMetadataEntries = await getTrajectoryGeneratorMetadataPage(
-        connection,
-        trajectoryId,
-        offset,
-      );
-    } catch {
-      break;
-    }
-
-    if (generatorMetadataEntries.length === 0) {
-      break;
-    }
-
-    for (const [entryIndex, rawGeneratorMetadataEntry] of generatorMetadataEntries.entries()) {
-      const parsedUsage = parseGeneratorMetadataUsage(
-        rawGeneratorMetadataEntry,
-        trajectoryId,
-        offset + entryIndex,
-        dynamicModelLabels,
-      );
-
-      if (!parsedUsage || seenUsageKeys.has(parsedUsage.usageKey)) {
-        continue;
-      }
-
-      seenUsageKeys.add(parsedUsage.usageKey);
-
-      if (parsedUsage.date < start || parsedUsage.date > end) {
-        continue;
-      }
-
-      addDailyTokenTotals(
-        totals,
-        parsedUsage.date,
-        parsedUsage.tokenTotals,
-        parsedUsage.modelName,
-      );
-
-      if (!parsedUsage.modelName) {
-        continue;
-      }
-
-      addModelTokenTotals(
-        modelTotals,
-        parsedUsage.modelName,
-        parsedUsage.tokenTotals,
-      );
-
-      if (parsedUsage.date >= recentStart) {
-        addModelTokenTotals(
-          recentModelTotals,
-          parsedUsage.modelName,
-          parsedUsage.tokenTotals,
-        );
-      }
-    }
-
-    if (
-      totalGeneratorMetadata > 0 &&
-      offset + generatorMetadataEntries.length >= totalGeneratorMetadata
-    ) {
-      break;
-    }
-
-    if (generatorMetadataEntries.length < STEP_PAGE_SIZE) {
-      break;
-    }
-  }
-}
-
-function aggregateDebugUsage(
-  stepMessages: RawStepMessage[],
-  start: Date,
-  end: Date,
-  recentStart: Date,
-  totals: DailyTotalsByDate,
-  modelTotals: Map<string, ModelTokenTotals>,
-  recentModelTotals: Map<string, ModelTokenTotals>,
-  dynamicModelLabels: ReadonlyMap<number, string>,
-  seenUsageKeys: Set<string>,
-) {
-  for (const stepMessage of stepMessages) {
-    for (const parsedUsage of parseStepUsages(
-      stepMessage.rawStep,
-      stepMessage.rawStepKey,
-      dynamicModelLabels,
-    )) {
-      if (seenUsageKeys.has(parsedUsage.usageKey)) {
-        continue;
-      }
-
-      seenUsageKeys.add(parsedUsage.usageKey);
-
-      if (parsedUsage.date < start || parsedUsage.date > end) {
-        continue;
-      }
-
-      addDailyTokenTotals(
-        totals,
-        parsedUsage.date,
-        parsedUsage.tokenTotals,
-        parsedUsage.modelName,
-      );
-
-      if (!parsedUsage.modelName) {
-        continue;
-      }
-
-      addModelTokenTotals(
-        modelTotals,
-        parsedUsage.modelName,
-        parsedUsage.tokenTotals,
-      );
-
-      if (parsedUsage.date >= recentStart) {
-        addModelTokenTotals(
-          recentModelTotals,
-          parsedUsage.modelName,
-          parsedUsage.tokenTotals,
-        );
-      }
-    }
-  }
 }
 
 function readConversationDbRows(databasePath: string): {
@@ -2287,6 +855,7 @@ async function aggregateConversationDbUsage(
       trajectoryId,
       row.idx,
       dynamicModelLabels,
+      resolveAntigravityModelName,
     );
 
     if (!parsedUsage || seenUsageKeys.has(parsedUsage.usageKey)) {
@@ -2347,6 +916,7 @@ async function aggregateConversationDbUsage(
       const modelUsage = parseModelUsageStats(
         modelUsagePayload,
         dynamicModelLabels,
+        resolveAntigravityModelName,
       );
 
       if (!modelUsage) {
@@ -2399,24 +969,20 @@ async function aggregateConversationDbUsage(
 export async function isAntigravityAvailable() {
   const connection = await getAntigravityConnectionInfo();
 
-  if (connection !== null) {
+  if (connection) {
     return true;
   }
 
   for (const dir of getAntigravityConversationDirectories()) {
     if (existsSync(dir)) {
       try {
-        const entries = readdirSync(dir);
+        const files = await readdir(dir);
 
-        if (
-          entries.some(
-            (entry) => entry.endsWith(".db") || entry.endsWith(".pb"),
-          )
-        ) {
+        if (files.some((f) => f.endsWith(".db") || f.endsWith(".pb"))) {
           return true;
         }
       } catch {
-        // ignore filesystem read errors
+        continue;
       }
     }
   }
@@ -2472,7 +1038,7 @@ export async function loadAntigravityRows(
     try {
       const debugStepMessages = await getDebugStepMessages(connection);
 
-      aggregateDebugUsage(
+      aggregateCodeiumDebugUsage(
         debugStepMessages,
         start,
         end,
@@ -2481,6 +1047,7 @@ export async function loadAntigravityRows(
         modelTotals,
         recentModelTotals,
         dynamicModelLabels,
+        resolveAntigravityModelName,
         seenUsageKeys,
       );
     } catch {
@@ -2561,7 +1128,7 @@ export async function loadAntigravityRows(
 
   if (connection && remainingTrajectoryIds.length > 0) {
     for (const trajectoryId of remainingTrajectoryIds.slice(0, maxTrajectories)) {
-      await aggregateTrajectoryUsage(
+      await aggregateCodeiumTrajectoryUsage(
         connection,
         trajectoryId,
         start,
@@ -2571,6 +1138,7 @@ export async function loadAntigravityRows(
         modelTotals,
         recentModelTotals,
         dynamicModelLabels,
+        resolveAntigravityModelName,
         seenUsageKeys,
         maxStepPages,
       );

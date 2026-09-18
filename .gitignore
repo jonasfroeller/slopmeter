@@ -42,3 +42,4 @@ tmp-state.vscdb
 heatmap*.png
 heatmap*.json
 heatmap*.svg
+*test-antigravity.json

@@ -5,6 +5,7 @@
       "dependsOn": ["^build"],
       "env": [
         "APPDATA",
+        "LOCALAPPDATA",
         "CI",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
@@ -22,6 +23,15 @@
         "TRAE_DATABASE_PATH",
         "TRAE_DB_PATH",
         "TRAE_SQLCIPHER_KEY",
+        "WINDSURF_CONFIG_DIR",
+        "WINDSURF_CODEIUM_DIR",
+        "WINDSURF_LANGUAGE_SERVER_PATH",
+        "WINDSURF_LOG_PATH",
+        "WINDSURF_LS_PID",
+        "WINDSURF_LS_HTTP_PORT",
+        "WINDSURF_LS_CSRF_TOKEN",
+        "WINDSURF_MAX_TRAJECTORIES",
+        "WINDSURF_MAX_STEP_PAGES",
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME"
       ],
@@ -37,6 +47,7 @@
       "persistent": true,
       "env": [
         "APPDATA",
+        "LOCALAPPDATA",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "CURSOR_CONFIG_DIR",
@@ -53,6 +64,15 @@
         "TRAE_DATABASE_PATH",
         "TRAE_DB_PATH",
         "TRAE_SQLCIPHER_KEY",
+        "WINDSURF_CONFIG_DIR",
+        "WINDSURF_CODEIUM_DIR",
+        "WINDSURF_LANGUAGE_SERVER_PATH",
+        "WINDSURF_LOG_PATH",
+        "WINDSURF_LS_PID",
+        "WINDSURF_LS_HTTP_PORT",
+        "WINDSURF_LS_CSRF_TOKEN",
+        "WINDSURF_MAX_TRAJECTORIES",
+        "WINDSURF_MAX_STEP_PAGES",
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME"
       ]

@@ -14,6 +14,7 @@ export interface ProviderSelectionValues {
   pi: boolean;
   trae: boolean;
   grok: boolean;
+  windsurf: boolean;
 }
 
 const outputProviderIds: ProviderId[] = [
@@ -27,8 +28,8 @@ const outputProviderIds: ProviderId[] = [
   "pi",
   "trae",
   "grok",
+  "windsurf",
 ];
-
 
 export function getRequestedProvidersForOutput(
   values: ProviderSelectionValues,

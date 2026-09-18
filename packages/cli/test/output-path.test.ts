@@ -18,6 +18,7 @@ function createValues(overrides?: Partial<{
   pi: boolean;
   trae: boolean;
   grok: boolean;
+  windsurf: boolean;
 }>) {
   return {
     all: false,
@@ -31,6 +32,7 @@ function createValues(overrides?: Partial<{
     pi: false,
     trae: false,
     grok: false,
+    windsurf: false,
     ...overrides,
   };
 }
@@ -111,3 +113,9 @@ test("default output path adds _grok with timestamp", () => {
   );
 });
 
+test("default output path adds _windsurf with timestamp", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ windsurf: true }), "png", fixedDate),
+    "./heatmap-last-year_windsurf_2026-09-15_14-30-45.png",
+  );
+});

@@ -43,6 +43,7 @@ interface CliArgValues {
   pi: boolean;
   trae: boolean;
   grok: boolean;
+  windsurf: boolean;
 }
 
 const PNG_BASE_WIDTH = 1000;
@@ -55,7 +56,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -69,6 +70,7 @@ Options:
   --opencode                  Render Open Code graph
   --pi                        Render Pi Coding Agent graph
   --trae                      Render Trae graph
+  --windsurf                  Render Windsurf graph
   -m, --models                Include a detailed card with all models listed in a table
   --dark                      Render with the dark theme
   -f, --format                Output format: png, svg, or json (default: png)
@@ -100,6 +102,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       pi: ow.boolean,
       trae: ow.boolean,
       grok: ow.boolean,
+      windsurf: ow.boolean,
     }),
   );
 }
@@ -207,7 +210,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, or Trae.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, or Windsurf.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -360,6 +363,7 @@ async function main() {
       pi: { type: "boolean", default: false },
       trae: { type: "boolean", default: false },
       grok: { type: "boolean", default: false },
+      windsurf: { type: "boolean", default: false },
     },
     allowPositionals: false,
   });

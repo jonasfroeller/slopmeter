@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, and Trae for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -65,6 +65,7 @@ slopmeter --grok
 slopmeter --opencode
 slopmeter --pi
 slopmeter --trae
+slopmeter --windsurf
 ```
 
 ## What the image shows
@@ -124,6 +125,15 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `ANTIGRAVITY_STATE_DB_PATH`: override Antigravity unified-state DB discovery with an explicit `state.vscdb` path.
 - `ANTIGRAVITY_MAX_TRAJECTORIES`: cap the number of cascades scanned per run. Default: `200`.
 - `ANTIGRAVITY_MAX_STEP_PAGES`: cap per-cascade step page fetches (20-step page size). Default: `100`.
+- `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
+- `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.
+- `WINDSURF_LANGUAGE_SERVER_PATH`: override the Windsurf language-server binary path used for headless reads.
+- `WINDSURF_LOG_PATH`: override Windsurf log discovery with an explicit `Windsurf.log` path.
+- `WINDSURF_LS_PID`: force a running Windsurf language-server PID.
+- `WINDSURF_LS_HTTP_PORT`: force the running Windsurf language-server HTTP port.
+- `WINDSURF_LS_CSRF_TOKEN`: force the running Windsurf language-server CSRF token.
+- `WINDSURF_MAX_TRAJECTORIES`: cap the number of Cascade trajectories scanned per run. Default: `1000`.
+- `WINDSURF_MAX_STEP_PAGES`: cap per-trajectory step and generator-metadata page fetches. Default: `100`.
 - `TRAE_DATABASE_PATH`: override Trae database discovery with an explicit decrypted SQLite database path or JSON export path.
 - `TRAE_SQLCIPHER_KEY`: 64-character raw hex key to decrypt Trae's SQLCipher database (`ModularData/ai-agent/database.db`) on the fly.
 - `TRAE_CONFIG_DIR`: override the Trae root data directory used for database discovery.
@@ -149,6 +159,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` (comma-separated dirs) or defaults `~/.config/claude/projects` and `~/.claude/projects`
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
+- Windsurf: discovers running or installed Windsurf language servers and reads Cascade trajectory usage from Codeium protobuf RPCs; when Windsurf is closed, a discovered language server may be started briefly for a read-only scan
 - Cursor: reads `cursorAuth/accessToken` and `cursorAuth/refreshToken` from `$CURSOR_STATE_DB_PATH`, `$CURSOR_CONFIG_DIR/User/globalStorage/state.vscdb`, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS), `%APPDATA%/Cursor/User/globalStorage/state.vscdb` (Windows), or `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux), then loads usage from Cursor's CSV export endpoint
 - Gemini CLI: `$GEMINI_CONFIG_DIR/tmp/**/chats/session-*.json` or `~/.gemini/tmp/**/chats/session-*.json`
 - `Open Code`: prefers `$OPENCODE_DATA_DIR/opencode.db` or `~/.local/share/opencode/opencode.db`, and falls back to `$OPENCODE_DATA_DIR/storage/message` or `~/.local/share/opencode/storage/message`
