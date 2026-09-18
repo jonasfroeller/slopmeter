@@ -156,6 +156,8 @@ When Claude Code falls back to `history.jsonl`, those days are rendered as activ
 - If provider flags are passed and a requested provider has no data, the command exits with an error.
 - If no provider has data, the command exits with an error.
 
+GitHub Copilot is intentionally not supported. Its documented usage surfaces are organization/enterprise administration APIs that expose request and activity metrics, not the local prompt/input/output token telemetry used by `slopmeter`. Supporting it would require account credentials and external API access while producing numbers that are not comparable with the other providers. GitHub's reports also have limited historical retention, so Copilot cannot provide the same local and all-time history behavior. See the [Copilot usage metrics API](https://docs.github.com/rest/copilot/copilot-usage-metrics) and [user activity metrics](https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/review-activity/review-user-activity-data).
+
 ## Environment variables
 
 Environment variables can be exported in your shell or defined in a local `.env` file (see `.env.example`). `slopmeter` automatically loads `.env` files on startup.
