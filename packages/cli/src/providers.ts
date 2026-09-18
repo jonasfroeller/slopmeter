@@ -3,6 +3,7 @@ import { isAntigravityAvailable, loadAntigravityRows } from "./lib/antigravity";
 import { isAmpAvailable, loadAmpRows } from "./lib/amp";
 import { isClaudeAvailable, loadClaudeRows } from "./lib/claude-code";
 import { isCodexAvailable, loadCodexRows } from "./lib/codex";
+import { isContinueAvailable, loadContinueRows } from "./lib/continue";
 import { isCursorAvailable, loadCursorRows } from "./lib/cursor";
 import { isFreebuffAvailable, loadFreebuffRows } from "./lib/freebuff";
 import { isGeminiAvailable, loadGeminiRows } from "./lib/gemini";
@@ -41,6 +42,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     amp: false,
     claude: false,
     codex: false,
+    continue: false,
     cursor: false,
     freebuff: false,
     gemini: false,
@@ -63,6 +65,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isClaudeAvailable();
     case "codex":
       return isCodexAvailable();
+    case "continue":
+      return isContinueAvailable();
     case "cursor":
       return isCursorAvailable();
     case "freebuff":
@@ -129,6 +133,7 @@ export async function aggregateUsage({
     amp: null,
     claude: null,
     codex: null,
+    continue: null,
     cursor: null,
     freebuff: null,
     gemini: null,
@@ -156,6 +161,9 @@ export async function aggregateUsage({
         break;
       case "codex":
         summary = await loadCodexRows(start, end, warnings);
+        break;
+      case "continue":
+        summary = await loadContinueRows(start, end);
         break;
       case "cursor":
         summary = await loadCursorRows(start, end);

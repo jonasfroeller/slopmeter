@@ -3,6 +3,7 @@ export type UsageProviderId =
   | "amp"
   | "claude"
   | "codex"
+  | "continue"
   | "cursor"
   | "freebuff"
   | "gemini"

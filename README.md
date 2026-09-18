@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Warp, and Windsurf for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Continue, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Warp, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -58,6 +58,7 @@ slopmeter --all
 # Provider filters (optional)
 slopmeter --claude
 slopmeter --codex
+slopmeter --continue
 slopmeter --cursor
 slopmeter --freebuff
 slopmeter --antigravity
@@ -112,6 +113,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - Antigravity usage is derived from local Antigravity language server trajectory RPCs plus trajectory IDs from local Antigravity unified state.
 - Freebuff usage is derived from assistant-message usage records in local `chat-messages.json` files, or, when those files are unavailable, from the authenticated local Freebuff Desktop API.
 - When Freebuff does not record a model on an individual usage record, Slopmeter labels that usage `Mixed` instead of attributing it to the thread's current model.
+- Continue usage is derived from `promptTokens` and `generatedTokens` records in `~/.continue/dev_data/**/tokensGenerated.jsonl`; records without timestamps use the source file's modification date.
 - Warp usage is derived from aggregate `warp_tokens` and `byok_tokens` entries in the local Warp `agent_conversations` SQLite table. Warp does not persist an input/output split, so the aggregate is kept as the total and input-compatible usage count.
 - If provider flags are passed, `slopmeter` only loads those providers and only prints availability for those providers.
 - If no provider flags are passed, the CLI loads all providers and prints availability for all providers.
@@ -135,6 +137,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `FREEBUFF_CONFIG_DIR`: override the Freebuff configuration root. Multiple roots may be comma-separated.
 - `FREEBUFF_DATA_DIR`: compatibility alias for `FREEBUFF_CONFIG_DIR`.
 - `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.
+- `CONTINUE_CONFIG_DIR`: override the Continue configuration root used for token telemetry discovery. Defaults to `~/.continue`.
 - `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
 - `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.
 - `WINDSURF_LANGUAGE_SERVER_PATH`: override the Windsurf language-server binary path used for headless reads.
@@ -172,6 +175,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
 - Freebuff: `~/.config/manicode/projects/**/chats/**/chat-messages.json`, plus `manicode-dev` and `manicode-staging`; when those files are absent, the running Desktop orchestrator's local `/api/projects` and `/api/thread/:id` endpoints are used; override file roots with `FREEBUFF_CONFIG_DIR` or `FREEBUFF_DATA_DIR`, and the API with `FREEBUFF_API_URL`
 - Freebuff and paid Codebuff can share the `manicode` root. If both are installed and must be separated, point `FREEBUFF_CONFIG_DIR` at an isolated Freebuff root.
+- Continue: `$CONTINUE_CONFIG_DIR/dev_data/**/tokensGenerated.jsonl` or `~/.continue/dev_data/**/tokensGenerated.jsonl`
 - Windsurf: discovers running or installed Windsurf language servers and reads Cascade trajectory usage from Codeium protobuf RPCs; when Windsurf is closed, a discovered language server may be started briefly for a read-only scan
 - Cursor: reads `cursorAuth/accessToken` and `cursorAuth/refreshToken` from `$CURSOR_STATE_DB_PATH`, `$CURSOR_CONFIG_DIR/User/globalStorage/state.vscdb`, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS), `%APPDATA%/Cursor/User/globalStorage/state.vscdb` (Windows), or `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux), then loads usage from Cursor's CSV export endpoint
 - Gemini CLI: `$GEMINI_CONFIG_DIR/tmp/**/chats/session-*.json` or `~/.gemini/tmp/**/chats/session-*.json`

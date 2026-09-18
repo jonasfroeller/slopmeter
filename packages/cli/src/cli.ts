@@ -37,6 +37,7 @@ interface CliArgValues {
   amp: boolean;
   claude: boolean;
   codex: boolean;
+  continue: boolean;
   cursor: boolean;
   freebuff: boolean;
   gemini: boolean;
@@ -58,7 +59,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--cursor] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--continue] [--cursor] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -66,6 +67,7 @@ Options:
   --amp                       Render Amp graph
   --claude                    Render Claude Code graph
   --codex                     Render Codex graph
+  --continue                  Render Continue graph
   --cursor                    Render Cursor graph
   --freebuff                  Render Freebuff graph
   --gemini                    Render Gemini CLI graph
@@ -100,6 +102,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       amp: ow.boolean,
       claude: ow.boolean,
       codex: ow.boolean,
+      continue: ow.boolean,
       cursor: ow.boolean,
       freebuff: ow.boolean,
       gemini: ow.boolean,
@@ -216,7 +219,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Windsurf, or Warp.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Continue, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Windsurf, or Warp.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -363,6 +366,7 @@ async function main() {
       amp: { type: "boolean", default: false },
       claude: { type: "boolean", default: false },
       codex: { type: "boolean", default: false },
+      continue: { type: "boolean", default: false },
       cursor: { type: "boolean", default: false },
       freebuff: { type: "boolean", default: false },
       gemini: { type: "boolean", default: false },

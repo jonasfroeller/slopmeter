@@ -8,6 +8,7 @@ export interface ProviderSelectionValues {
   amp: boolean;
   claude: boolean;
   codex: boolean;
+  continue?: boolean;
   cursor: boolean;
   freebuff: boolean;
   gemini: boolean;
@@ -24,6 +25,7 @@ const outputProviderIds: ProviderId[] = [
   "amp",
   "claude",
   "codex",
+  "continue",
   "cursor",
   "freebuff",
   "gemini",

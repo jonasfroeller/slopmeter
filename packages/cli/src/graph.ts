@@ -161,6 +161,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  continue: {
+    title: "Continue",
+    colors: {
+      light: [
+        "#f7fee7", // lime-50
+        "#d9f99d", // lime-200
+        "#a3e635", // lime-400
+        "#65a30d", // lime-600
+        "#3f6212", // lime-800
+      ],
+      dark: [
+        "#1a2e05", // lime-950
+        "#365314", // lime-800
+        "#4d7c0f", // lime-700
+        "#a3e635", // lime-400
+        "#d9f99d", // lime-200
+      ],
+    },
+  },
   cursor: {
     title: "Cursor",
     colors: {
@@ -334,7 +353,7 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
   },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
+      "Antigravity / Amp / Claude Code / Codex / Continue / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
     titleCaption: "Total usage from",
     colors: {
       light: [
