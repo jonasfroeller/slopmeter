@@ -18,6 +18,7 @@ function createValues(overrides?: Partial<{
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
+  roo: boolean;
   trae: boolean;
   grok: boolean;
   windsurf: boolean;
@@ -34,6 +35,7 @@ function createValues(overrides?: Partial<{
     gemini: false,
     opencode: false,
     pi: false,
+    roo: false,
     trae: false,
     grok: false,
     windsurf: false,

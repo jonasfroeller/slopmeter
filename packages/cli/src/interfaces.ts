@@ -11,6 +11,7 @@ export type UsageProviderId =
   | "gemini"
   | "opencode"
   | "pi"
+  | "roo"
   | "trae"
   | "grok"
   | "windsurf"

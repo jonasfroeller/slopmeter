@@ -16,6 +16,7 @@ export interface ProviderSelectionValues {
   gemini: boolean;
   opencode: boolean;
   pi: boolean;
+  roo: boolean;
   trae: boolean;
   grok: boolean;
   windsurf: boolean;
@@ -35,6 +36,7 @@ const outputProviderIds: ProviderId[] = [
   "gemini",
   "opencode",
   "pi",
+  "roo",
   "trae",
   "grok",
   "windsurf",

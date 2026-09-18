@@ -313,6 +313,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  roo: {
+    title: "Roo Code",
+    colors: {
+      light: [
+        "#ecfeff", // cyan-50
+        "#a5f3fc", // cyan-200
+        "#67e8f9", // cyan-300
+        "#0891b2", // cyan-600
+        "#155e75", // cyan-800
+      ],
+      dark: [
+        "#083344", // cyan-950
+        "#155e75", // cyan-800
+        "#0e7490", // cyan-700
+        "#22d3ee", // cyan-400
+        "#a5f3fc", // cyan-200
+      ],
+    },
+  },
   trae: {
     title: "Trae",
     colors: {
@@ -391,7 +410,7 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
   },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Cline / Codex / Continue / Cursor / Vercel FX / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
+      "Antigravity / Amp / Claude Code / Cline / Codex / Continue / Cursor / Vercel FX / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Roo Code / Trae / Windsurf / Warp",
     titleCaption: "Total usage from",
     colors: {
       light: [

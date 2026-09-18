@@ -1,6 +1,6 @@
 # slopmeter
 
-`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Warp, and Windsurf usage data and generates a contribution-style heatmap for the rolling past year.
+`slopmeter` is a Node.js CLI that scans local Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf usage data and generates a contribution-style heatmap for the rolling past year.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ slopmeter
 ## Usage
 
 ```bash
-slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--warp] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 ```
 
 By default, the CLI:
@@ -49,6 +49,7 @@ By default, the CLI:
 - `--grok`: include only Grok data
 - `--opencode`: include only Open Code data
 - `--pi`: include only Pi Coding Agent data
+- `--roo`: include only Roo Code/PearAI data
 - `--trae`: include only Trae data
 - `--windsurf`: include only Windsurf data
 - `--warp`: include only Warp data
@@ -126,6 +127,12 @@ Render only Pi Coding Agent usage:
 npx slopmeter --pi
 ```
 
+Render only Roo Code/PearAI usage:
+
+```bash
+npx slopmeter --roo
+```
+
 Render only Windsurf usage:
 
 ```bash
@@ -163,6 +170,7 @@ npx slopmeter --dark --format svg --output ./out/heatmap-dark.svg
 
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` or `~/.config/claude/projects`, `~/.claude/projects`
 - Cline: `$CLINE_CONFIG_DIR/globalStorage/saoudrizwan.claude-dev/tasks/**/ui_messages.json`, or the VS Code `User` global-storage roots for Code, Code Insiders, and VSCodium
+- Roo Code/PearAI: `$ROO_CONFIG_DIR/globalStorage/rooveterinaryinc.roo-cline/tasks/**/ui_messages.json` or `pearai.pearai-roo-cline`, plus the default VS Code and PearAI `User` global-storage roots
 - Older Claude Code layouts: falls back to `$CLAUDE_CONFIG_DIR/stats-cache.json`, `~/.config/claude/stats-cache.json`, or `~/.claude/stats-cache.json` for days not present in project logs
 - Earliest Claude Code activity fallback: uses `$CLAUDE_CONFIG_DIR/history.jsonl`, `~/.config/claude/history.jsonl`, or `~/.claude/history.jsonl` to mark activity-only days when token totals are unavailable
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
@@ -172,6 +180,7 @@ npx slopmeter --dark --format svg --output ./out/heatmap-dark.svg
 - Freebuff: `~/.config/manicode/projects/**/chats/**/chat-messages.json`, plus `manicode-dev` and `manicode-staging`; when those files are absent, the running Desktop orchestrator's local `/api/projects` and `/api/thread/:id` endpoints are used; override file roots with `FREEBUFF_CONFIG_DIR` or `FREEBUFF_DATA_DIR`, and the API with `FREEBUFF_API_URL`
 - Freebuff and paid Codebuff can share the `manicode` root. If both are installed and must be separated, point `FREEBUFF_CONFIG_DIR` at an isolated Freebuff root.
 - Cline usage is derived from `api_req_started` records in each local VS Code Cline task's `ui_messages.json`. Cline's local history does not reliably retain the model for each request, so those tokens are grouped under `Cline`.
+- Roo Code usage is derived from the same `api_req_started` telemetry in standalone Roo Code and PearAI-bundled Roo task files. Those records do not reliably retain the model for each request, so unlabelled tokens are grouped under `Roo Code`.
 - Windsurf: discovers running or installed Windsurf language servers and reads Cascade trajectory usage from Codeium protobuf RPCs; when Windsurf is closed, a discovered language server may be started briefly for a read-only scan
 - Cursor: reads `cursorAuth/accessToken` and `cursorAuth/refreshToken` from `$CURSOR_STATE_DB_PATH`, `$CURSOR_CONFIG_DIR/User/globalStorage/state.vscdb`, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS), `%APPDATA%/Cursor/User/globalStorage/state.vscdb` (Windows), or `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux), then loads usage from Cursor's CSV export endpoint
 - Gemini CLI: `$GEMINI_CONFIG_DIR/tmp/**/chats/session-*.json` or `~/.gemini/tmp/**/chats/session-*.json`
@@ -215,6 +224,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.
 - `CONTINUE_CONFIG_DIR`: override the Continue configuration root used for token telemetry discovery. Defaults to `~/.continue`.
 - `CLINE_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Cline task discovery. Defaults to Code, Code Insiders, and VSCodium user-data roots.
+- `ROO_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Roo Code task discovery. Defaults to Code, Code Insiders, VSCodium, and PearAI user-data roots.
 - `FX_HOME`: override the native FX state directory. When unset on Windows, all registered WSL2 distributions are scanned automatically.
 - `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
 - `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.

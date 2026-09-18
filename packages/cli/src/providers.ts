@@ -17,6 +17,7 @@ import {
 } from "./lib/interfaces";
 import { isOpenCodeAvailable, loadOpenCodeRows } from "./lib/open-code";
 import { isPiAvailable, loadPiRows } from "./lib/pi";
+import { isRooAvailable, loadRooRows } from "./lib/roo";
 import { isTraeAvailable, loadTraeRows } from "./lib/trae";
 import { isGrokAvailable, loadGrokRows } from "./lib/grok";
 import { isWindsurfAvailable, loadWindsurfRows } from "./lib/windsurf";
@@ -53,6 +54,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     grok: false,
     opencode: false,
     pi: false,
+    roo: false,
     trae: false,
     windsurf: false,
     warp: false,
@@ -87,6 +89,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isOpenCodeAvailable();
     case "pi":
       return isPiAvailable();
+    case "roo":
+      return isRooAvailable();
     case "trae":
       return isTraeAvailable();
     case "windsurf":
@@ -150,6 +154,7 @@ export async function aggregateUsage({
     grok: null,
     opencode: null,
     pi: null,
+    roo: null,
     trae: null,
     windsurf: null,
     warp: null,
@@ -198,6 +203,9 @@ export async function aggregateUsage({
         break;
       case "pi":
         summary = await loadPiRows(start, end);
+        break;
+      case "roo":
+        summary = await loadRooRows(start, end);
         break;
       case "trae":
         summary = await loadTraeRows(start, end);

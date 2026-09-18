@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Warp, and Windsurf for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -68,6 +68,7 @@ slopmeter --gemini
 slopmeter --grok
 slopmeter --opencode
 slopmeter --pi
+slopmeter --roo
 slopmeter --trae
 slopmeter --windsurf
 slopmeter --warp
@@ -142,6 +143,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.
 - `CONTINUE_CONFIG_DIR`: override the Continue configuration root used for token telemetry discovery. Defaults to `~/.continue`.
 - `CLINE_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Cline task discovery. Defaults to Code, Code Insiders, and VSCodium user-data roots.
+- `ROO_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Roo Code task discovery. Defaults to Code, Code Insiders, VSCodium, and PearAI user-data roots.
 - `FX_HOME`: override the native FX state directory. When unset on Windows, all registered WSL2 distributions are scanned automatically.
 - `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
 - `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.
@@ -177,11 +179,13 @@ Environment variables can be exported in your shell or defined in a local `.env`
 
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` (comma-separated dirs) or defaults `~/.config/claude/projects` and `~/.claude/projects`
 - Cline: `$CLINE_CONFIG_DIR/globalStorage/saoudrizwan.claude-dev/tasks/**/ui_messages.json`, or the VS Code `User` global-storage roots for Code, Code Insiders, and VSCodium
+- Roo Code/PearAI: `$ROO_CONFIG_DIR/globalStorage/rooveterinaryinc.roo-cline/tasks/**/ui_messages.json` or `pearai.pearai-roo-cline`, plus the default VS Code and PearAI `User` global-storage roots
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
 - Freebuff: `~/.config/manicode/projects/**/chats/**/chat-messages.json`, plus `manicode-dev` and `manicode-staging`; when those files are absent, the running Desktop orchestrator's local `/api/projects` and `/api/thread/:id` endpoints are used; override file roots with `FREEBUFF_CONFIG_DIR` or `FREEBUFF_DATA_DIR`, and the API with `FREEBUFF_API_URL`
 - Freebuff and paid Codebuff can share the `manicode` root. If both are installed and must be separated, point `FREEBUFF_CONFIG_DIR` at an isolated Freebuff root.
 - Cline usage is derived from `api_req_started` records in each local VS Code Cline task's `ui_messages.json`. Cline's local history does not reliably retain the model for each request, so those tokens are grouped under `Cline`.
+- Roo Code usage is derived from the same `api_req_started` telemetry in standalone Roo Code and PearAI-bundled Roo task files. Those records do not reliably retain the model for each request, so unlabelled tokens are grouped under `Roo Code`.
 - Continue: `$CONTINUE_CONFIG_DIR/dev_data/**/tokensGenerated.jsonl` or `~/.continue/dev_data/**/tokensGenerated.jsonl`
 - Vercel FX: `$FX_HOME/usage.jsonl` or `~/.fx/usage.jsonl`; on Windows, each registered WSL2 distribution's `~/.fx/usage.jsonl` is also checked
 - Windsurf: discovers running or installed Windsurf language servers and reads Cascade trajectory usage from Codeium protobuf RPCs; when Windsurf is closed, a discovered language server may be started briefly for a read-only scan
