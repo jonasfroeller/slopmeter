@@ -11,6 +11,7 @@ export type UsageProviderId =
   | "trae"
   | "grok"
   | "windsurf"
+  | "warp"
   | "all";
 
 export interface UsageSummary {

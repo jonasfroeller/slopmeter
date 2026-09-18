@@ -17,6 +17,7 @@ import { isPiAvailable, loadPiRows } from "./lib/pi";
 import { isTraeAvailable, loadTraeRows } from "./lib/trae";
 import { isGrokAvailable, loadGrokRows } from "./lib/grok";
 import { isWindsurfAvailable, loadWindsurfRows } from "./lib/windsurf";
+import { isWarpAvailable, loadWarpRows } from "./lib/warp";
 import { hasUsage, mergeUsageSummaries } from "./lib/utils";
 
 export { defaultProviderIds, providerIds, providerStatusLabel, type ProviderId };
@@ -48,6 +49,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     pi: false,
     trae: false,
     windsurf: false,
+    warp: false,
   };
 }
 
@@ -77,6 +79,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isTraeAvailable();
     case "windsurf":
       return isWindsurfAvailable();
+    case "warp":
+      return isWarpAvailable();
     default: {
       const exhaustiveCheck: never = provider;
 
@@ -133,6 +137,7 @@ export async function aggregateUsage({
     pi: null,
     trae: null,
     windsurf: null,
+    warp: null,
   };
   const warnings: string[] = [];
 
@@ -175,6 +180,9 @@ export async function aggregateUsage({
         break;
       case "windsurf":
         summary = await loadWindsurfRows(start, end);
+        break;
+      case "warp":
+        summary = await loadWarpRows(start, end);
         break;
       default: {
         const exhaustiveCheck: never = provider;

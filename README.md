@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, and Windsurf for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Codex, Cursor, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Warp, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -67,6 +67,7 @@ slopmeter --opencode
 slopmeter --pi
 slopmeter --trae
 slopmeter --windsurf
+slopmeter --warp
 ```
 
 ## What the image shows
@@ -111,6 +112,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - Antigravity usage is derived from local Antigravity language server trajectory RPCs plus trajectory IDs from local Antigravity unified state.
 - Freebuff usage is derived from assistant-message usage records in local `chat-messages.json` files, or, when those files are unavailable, from the authenticated local Freebuff Desktop API.
 - When Freebuff does not record a model on an individual usage record, Slopmeter labels that usage `Mixed` instead of attributing it to the thread's current model.
+- Warp usage is derived from aggregate `warp_tokens` and `byok_tokens` entries in the local Warp `agent_conversations` SQLite table. Warp does not persist an input/output split, so the aggregate is kept as the total and input-compatible usage count.
 - If provider flags are passed, `slopmeter` only loads those providers and only prints availability for those providers.
 - If no provider flags are passed, the CLI loads all providers and prints availability for all providers.
 - If explicit provider flags are passed and any requested provider has no data, the command exits with an error.
@@ -145,6 +147,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `TRAE_DATABASE_PATH`: override Trae database discovery with an explicit decrypted SQLite database path or JSON export path.
 - `TRAE_SQLCIPHER_KEY`: 64-character raw hex key to decrypt Trae's SQLCipher database (`ModularData/ai-agent/database.db`) on the fly.
 - `TRAE_CONFIG_DIR`: override the Trae root data directory used for database discovery.
+- `WARP_DATABASE_PATH`: override the Warp `warp.sqlite` database path.
 - `SLOPMETER_FILE_PROCESS_CONCURRENCY`: positive integer file-processing limit for Claude Code, Codex, and Freebuff usage files. Default: `16`.
 - `SLOPMETER_MAX_JSONL_RECORD_BYTES`: byte cap for Claude Code and Codex JSONL records, Freebuff chat JSON documents, OpenCode JSON documents, and OpenCode SQLite `message.data` payloads. Default: `67108864` (`64 MB`).
 
@@ -175,3 +178,4 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `Open Code`: prefers `$OPENCODE_DATA_DIR/opencode.db` or `~/.local/share/opencode/opencode.db`, and falls back to `$OPENCODE_DATA_DIR/storage/message` or `~/.local/share/opencode/storage/message`
 - `Pi Coding Agent`: `$PI_CODING_AGENT_DIR/sessions` or `~/.pi/agent/sessions`
 - `Trae`: `$TRAE_DATABASE_PATH`, auto-discovered `database_decrypted.db` in `%APPDATA%/Trae/ModularData/ai-agent/` (or `TRAE SOLO`, macOS `~/Library/Application Support/Trae`, Linux `~/.config/Trae`), or `database.db` when `TRAE_SQLCIPHER_KEY` is provided
+- `Warp`: `$WARP_DATABASE_PATH` or `%LOCALAPPDATA%/warp/Warp/data/warp.sqlite` (macOS and Linux platform defaults are also checked)

@@ -313,9 +313,28 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  warp: {
+    title: "Warp",
+    colors: {
+      light: [
+        "#fdf4ff", // fuchsia-50
+        "#f5d0fe", // fuchsia-200
+        "#e879f9", // fuchsia-400
+        "#c026d3", // fuchsia-600
+        "#86198f", // fuchsia-800
+      ],
+      dark: [
+        "#4a044e", // fuchsia-950
+        "#701a75", // fuchsia-800
+        "#a21caf", // fuchsia-700
+        "#e879f9", // fuchsia-400
+        "#f5d0fe", // fuchsia-200
+      ],
+    },
+  },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Codex / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf",
+      "Antigravity / Amp / Claude Code / Codex / Cursor / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Trae / Windsurf / Warp",
     titleCaption: "Total usage from",
     colors: {
       light: [
