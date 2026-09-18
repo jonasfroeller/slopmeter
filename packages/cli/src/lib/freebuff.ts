@@ -27,6 +27,7 @@ const FREEBUFF_DATA_DIR_ENV = "FREEBUFF_DATA_DIR";
 const FREEBUFF_API_URL_ENV = "FREEBUFF_API_URL";
 const DEFAULT_FREEBUFF_API_URL = "http://127.0.0.1:12382";
 const FREEBUFF_API_TIMEOUT_MS = 1_500;
+const MIXED_FREEBUFF_MODEL = "Mixed";
 
 export interface FreebuffUsage {
   input_tokens?: unknown;
@@ -151,7 +152,6 @@ async function fetchFreebuffJson(
 interface FreebuffApiThread {
   baseUrl: string;
   id: string;
-  model?: string;
 }
 
 async function getFreebuffApiThreads(): Promise<FreebuffApiThread[]> {
@@ -185,7 +185,6 @@ async function getFreebuffApiThreads(): Promise<FreebuffApiThread[]> {
         threads.push({
           baseUrl,
           id,
-          model: asString(thread?.model),
         });
       }
     }
@@ -406,7 +405,10 @@ function addFreebuffUsage(
   message: JsonRecord,
 ) {
   const tokenTotals = createFreebuffTokenTotals(usage);
-  const modelName = asString(usage.model) ?? asString(message.model);
+  const modelName =
+    asString(usage.model) ??
+    asString(message.model) ??
+    MIXED_FREEBUFF_MODEL;
 
   addFreebuffTokenTotals(
     totals,
@@ -490,7 +492,9 @@ async function processFreebuffApiThread(
     }
 
     const modelName =
-      asString(usage.model) ?? asString(message.model) ?? thread.model;
+      asString(usage.model) ??
+      asString(message.model) ??
+      MIXED_FREEBUFF_MODEL;
 
     addFreebuffTokenTotals(
       totals,

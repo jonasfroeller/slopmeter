@@ -225,6 +225,18 @@ test("loadFreebuffRows falls back to the authenticated Desktop API", async () =>
                 },
               },
             },
+            {
+              role: "assistant",
+              ts: timestamp + 1,
+              model: "message-model",
+              metrics: {
+                usage: {
+                  inputTokens: 10,
+                  outputTokens: 5,
+                  totalTokens: 15,
+                },
+              },
+            },
           ],
         }),
       );
@@ -262,14 +274,17 @@ test("loadFreebuffRows falls back to the authenticated Desktop API", async () =>
 
     const day = summary.daily[0];
     assert.equal(formatLocalDate(day.date), "2026-02-18");
-    assert.equal(day.input, 100);
-    assert.equal(day.output, 20);
+    assert.equal(day.input, 110);
+    assert.equal(day.output, 25);
     assert.equal(day.cache.input, 10);
     assert.equal(day.cache.output, 0);
-    assert.equal(day.total, 120);
+    assert.equal(day.total, 135);
     assert.deepEqual(
       day.breakdown.map((entry) => [entry.name, entry.tokens.total]),
-      [["desktop-model", 120]],
+      [
+        ["Mixed", 120],
+        ["message-model", 15],
+      ],
     );
   } finally {
     if (originalConfigDir !== undefined) {

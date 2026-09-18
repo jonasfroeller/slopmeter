@@ -110,6 +110,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - Pi Coding Agent usage is derived from assistant messages in Pi session logs, grouped by the model that handled each turn.
 - Antigravity usage is derived from local Antigravity language server trajectory RPCs plus trajectory IDs from local Antigravity unified state.
 - Freebuff usage is derived from assistant-message usage records in local `chat-messages.json` files, or, when those files are unavailable, from the authenticated local Freebuff Desktop API.
+- When Freebuff does not record a model on an individual usage record, Slopmeter labels that usage `Mixed` instead of attributing it to the thread's current model.
 - If provider flags are passed, `slopmeter` only loads those providers and only prints availability for those providers.
 - If no provider flags are passed, the CLI loads all providers and prints availability for all providers.
 - If explicit provider flags are passed and any requested provider has no data, the command exits with an error.
