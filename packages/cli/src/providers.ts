@@ -16,6 +16,7 @@ import {
   type ProviderId,
 } from "./lib/interfaces";
 import { isOpenCodeAvailable, loadOpenCodeRows } from "./lib/open-code";
+import { isOllamaAvailable, loadOllamaRows } from "./lib/ollama";
 import { isPiAvailable, loadPiRows } from "./lib/pi";
 import { isRooAvailable, loadRooRows } from "./lib/roo";
 import { isTraeAvailable, loadTraeRows } from "./lib/trae";
@@ -53,6 +54,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     gemini: false,
     grok: false,
     opencode: false,
+    ollama: false,
     pi: false,
     roo: false,
     trae: false,
@@ -87,6 +89,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isGrokAvailable();
     case "opencode":
       return isOpenCodeAvailable();
+    case "ollama":
+      return isOllamaAvailable();
     case "pi":
       return isPiAvailable();
     case "roo":
@@ -153,6 +157,7 @@ export async function aggregateUsage({
     gemini: null,
     grok: null,
     opencode: null,
+    ollama: null,
     pi: null,
     roo: null,
     trae: null,
@@ -200,6 +205,9 @@ export async function aggregateUsage({
         break;
       case "opencode":
         summary = await loadOpenCodeRows(start, end);
+        break;
+      case "ollama":
+        summary = await loadOllamaRows(start, end);
         break;
       case "pi":
         summary = await loadPiRows(start, end);

@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -67,6 +67,7 @@ slopmeter --antigravity
 slopmeter --gemini
 slopmeter --grok
 slopmeter --opencode
+slopmeter --ollama
 slopmeter --pi
 slopmeter --roo
 slopmeter --trae
@@ -118,6 +119,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - When Freebuff does not record a model on an individual usage record, Slopmeter labels that usage `Mixed` instead of attributing it to the thread's current model.
 - Continue usage is derived from `promptTokens` and `generatedTokens` records in `~/.continue/dev_data/**/tokensGenerated.jsonl`; records without timestamps use the source file's modification date.
 - Vercel FX usage is derived from local generation facts in `~/.fx/usage.jsonl`. On Windows, Slopmeter also scans every registered WSL2 distribution for its own `~/.fx/usage.jsonl`.
+- Ollama usage is derived from successful `/api/chat` and `/api/generate` inference timings in rotated local `server*.log` files. Prompt-evaluation tokens are counted as input and generated tokens as output; model names come from Ollama's local template-selection log entries.
 - Warp usage is derived from aggregate `warp_tokens` and `byok_tokens` entries in the local Warp `agent_conversations` SQLite table. Warp does not persist an input/output split, so the aggregate is kept as the total and input-compatible usage count.
 - If provider flags are passed, `slopmeter` only loads those providers and only prints availability for those providers.
 - If no provider flags are passed, the CLI loads all providers and prints availability for all providers.
@@ -144,6 +146,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `CONTINUE_CONFIG_DIR`: override the Continue configuration root used for token telemetry discovery. Defaults to `~/.continue`.
 - `CLINE_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Cline task discovery. Defaults to Code, Code Insiders, and VSCodium user-data roots.
 - `ROO_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Roo Code task discovery. Defaults to Code, Code Insiders, VSCodium, and PearAI user-data roots.
+- `OLLAMA_LOG_DIR`: override the Ollama log directory or a specific `server*.log` file. Defaults to the native Ollama log directory for the current platform.
 - `FX_HOME`: override the native FX state directory. When unset on Windows, all registered WSL2 distributions are scanned automatically.
 - `WINDSURF_CONFIG_DIR`: override the Windsurf configuration root used for log discovery.
 - `WINDSURF_CODEIUM_DIR`: override the Windsurf Codeium data directory containing Cascade files.

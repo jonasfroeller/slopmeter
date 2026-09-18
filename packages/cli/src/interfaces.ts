@@ -10,6 +10,7 @@ export type UsageProviderId =
   | "freebuff"
   | "gemini"
   | "opencode"
+  | "ollama"
   | "pi"
   | "roo"
   | "trae"

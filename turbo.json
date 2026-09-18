@@ -22,6 +22,7 @@
         "GROK_HOME",
         "NODE_ENV",
         "OPENCODE_DATA_DIR",
+        "OLLAMA_LOG_DIR",
         "PI_CODING_AGENT_DIR",
         "ROO_CONFIG_DIR",
         "SLOPMETER_FILE_PROCESS_CONCURRENCY",
@@ -41,6 +42,7 @@
         "WINDSURF_MAX_TRAJECTORIES",
         "WINDSURF_MAX_STEP_PAGES",
         "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
         "XDG_DATA_HOME"
       ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
@@ -71,6 +73,7 @@
         "GROK_HOME",
         "NODE_ENV",
         "OPENCODE_DATA_DIR",
+        "OLLAMA_LOG_DIR",
         "PI_CODING_AGENT_DIR",
         "ROO_CONFIG_DIR",
         "SLOPMETER_FILE_PROCESS_CONCURRENCY",
@@ -90,6 +93,7 @@
         "WINDSURF_MAX_TRAJECTORIES",
         "WINDSURF_MAX_STEP_PAGES",
         "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
         "XDG_DATA_HOME"
       ]
     },

@@ -44,6 +44,7 @@ interface CliArgValues {
   freebuff: boolean;
   gemini: boolean;
   opencode: boolean;
+  ollama: boolean;
   pi: boolean;
   roo: boolean;
   trae: boolean;
@@ -62,7 +63,7 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
@@ -78,6 +79,7 @@ Options:
   --gemini                    Render Gemini CLI graph
   --grok                      Render Grok graph
   --opencode                  Render Open Code graph
+  --ollama                    Render Ollama graph
   --pi                        Render Pi Coding Agent graph
   --roo                       Render Roo Code graph
   --trae                      Render Trae graph
@@ -115,6 +117,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       freebuff: ow.boolean,
       gemini: ow.boolean,
       opencode: ow.boolean,
+      ollama: ow.boolean,
       pi: ow.boolean,
       roo: ow.boolean,
       trae: ow.boolean,
@@ -228,7 +231,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Roo Code, Trae, Windsurf, or Warp.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Windsurf, or Warp.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -382,6 +385,7 @@ async function main() {
       freebuff: { type: "boolean", default: false },
       gemini: { type: "boolean", default: false },
       opencode: { type: "boolean", default: false },
+      ollama: { type: "boolean", default: false },
       pi: { type: "boolean", default: false },
       roo: { type: "boolean", default: false },
       trae: { type: "boolean", default: false },

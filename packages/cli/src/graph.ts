@@ -294,6 +294,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  ollama: {
+    title: "Ollama",
+    colors: {
+      light: [
+        "#f7fee7", // lime-50
+        "#d9f99d", // lime-200
+        "#bef264", // lime-300
+        "#65a30d", // lime-600
+        "#3f6212", // lime-800
+      ],
+      dark: [
+        "#1a2e05", // lime-950
+        "#365314", // lime-900
+        "#4d7c0f", // lime-700
+        "#a3e635", // lime-400
+        "#d9f99d", // lime-200
+      ],
+    },
+  },
   pi: {
     title: "Pi Coding Agent",
     colors: {
@@ -410,7 +429,7 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
   },
   all: {
     title:
-      "Antigravity / Amp / Claude Code / Cline / Codex / Continue / Cursor / Vercel FX / Freebuff / Gemini CLI / Grok / Open Code / Pi Coding Agent / Roo Code / Trae / Windsurf / Warp",
+      "Antigravity / Amp / Claude Code / Cline / Codex / Continue / Cursor / Vercel FX / Freebuff / Gemini CLI / Grok / Open Code / Ollama / Pi Coding Agent / Roo Code / Trae / Windsurf / Warp",
     titleCaption: "Total usage from",
     colors: {
       light: [

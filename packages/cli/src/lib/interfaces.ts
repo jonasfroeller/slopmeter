@@ -10,6 +10,7 @@ export type ProviderId =
   | "freebuff"
   | "gemini"
   | "opencode"
+  | "ollama"
   | "pi"
   | "roo"
   | "trae"
@@ -29,6 +30,7 @@ export const providerIds: ProviderId[] = [
   "freebuff",
   "gemini",
   "opencode",
+  "ollama",
   "pi",
   "roo",
   "trae",
@@ -52,6 +54,7 @@ export const providerStatusLabel: Record<ProviderId, string> = {
   gemini: "Gemini CLI",
   grok: "Grok",
   opencode: "Open Code",
+  ollama: "Ollama",
   pi: "Pi Coding Agent",
   roo: "Roo Code",
   trae: "Trae",

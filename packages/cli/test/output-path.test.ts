@@ -17,6 +17,7 @@ function createValues(overrides?: Partial<{
   freebuff: boolean;
   gemini: boolean;
   opencode: boolean;
+  ollama: boolean;
   pi: boolean;
   roo: boolean;
   trae: boolean;
@@ -34,6 +35,7 @@ function createValues(overrides?: Partial<{
     freebuff: false,
     gemini: false,
     opencode: false,
+    ollama: false,
     pi: false,
     roo: false,
     trae: false,
