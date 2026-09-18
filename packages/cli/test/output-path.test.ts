@@ -11,6 +11,7 @@ function createValues(overrides?: Partial<{
   antigravity: boolean;
   amp: boolean;
   claude: boolean;
+  cline: boolean;
   codex: boolean;
   cursor: boolean;
   freebuff: boolean;
@@ -26,6 +27,7 @@ function createValues(overrides?: Partial<{
     antigravity: false,
     amp: false,
     claude: false,
+    cline: false,
     codex: false,
     cursor: false,
     freebuff: false,

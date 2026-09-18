@@ -36,6 +36,7 @@ interface CliArgValues {
   antigravity: boolean;
   amp: boolean;
   claude: boolean;
+  cline: boolean;
   codex: boolean;
   continue: boolean;
   cursor: boolean;
@@ -60,13 +61,14 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--opencode] [--pi] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
   --antigravity               Render Antigravity graph
   --amp                       Render Amp graph
   --claude                    Render Claude Code graph
+  --cline                     Render Cline graph
   --codex                     Render Codex graph
   --continue                  Render Continue graph
   --cursor                    Render Cursor graph
@@ -103,6 +105,7 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
       antigravity: ow.boolean,
       amp: ow.boolean,
       claude: ow.boolean,
+      cline: ow.boolean,
       codex: ow.boolean,
       continue: ow.boolean,
       cursor: ow.boolean,
@@ -222,7 +225,7 @@ function getRequestedProviders(values: CliArgValues) {
 }
 
 function getMergedNoDataMessage() {
-  return "No usage data found for Antigravity, Amp, Claude Code, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Windsurf, or Warp.";
+  return "No usage data found for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Pi Coding Agent, Trae, Windsurf, or Warp.";
 }
 
 function getRequestedMissingProvidersMessage(missing: ProviderId[]) {
@@ -368,6 +371,7 @@ async function main() {
       antigravity: { type: "boolean", default: false },
       amp: { type: "boolean", default: false },
       claude: { type: "boolean", default: false },
+      cline: { type: "boolean", default: false },
       codex: { type: "boolean", default: false },
       continue: { type: "boolean", default: false },
       cursor: { type: "boolean", default: false },

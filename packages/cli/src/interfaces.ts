@@ -2,6 +2,7 @@ export type UsageProviderId =
   | "antigravity"
   | "amp"
   | "claude"
+  | "cline"
   | "codex"
   | "continue"
   | "cursor"

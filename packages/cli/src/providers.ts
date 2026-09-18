@@ -2,6 +2,7 @@ import type { UsageSummary } from "./interfaces";
 import { isAntigravityAvailable, loadAntigravityRows } from "./lib/antigravity";
 import { isAmpAvailable, loadAmpRows } from "./lib/amp";
 import { isClaudeAvailable, loadClaudeRows } from "./lib/claude-code";
+import { isClineAvailable, loadClineRows } from "./lib/cline";
 import { isCodexAvailable, loadCodexRows } from "./lib/codex";
 import { isContinueAvailable, loadContinueRows } from "./lib/continue";
 import { isCursorAvailable, loadCursorRows } from "./lib/cursor";
@@ -42,6 +43,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     antigravity: false,
     amp: false,
     claude: false,
+    cline: false,
     codex: false,
     continue: false,
     cursor: false,
@@ -65,6 +67,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isAmpAvailable();
     case "claude":
       return isClaudeAvailable();
+    case "cline":
+      return isClineAvailable();
     case "codex":
       return isCodexAvailable();
     case "continue":
@@ -136,6 +140,7 @@ export async function aggregateUsage({
     antigravity: null,
     amp: null,
     claude: null,
+    cline: null,
     codex: null,
     continue: null,
     cursor: null,
@@ -163,6 +168,9 @@ export async function aggregateUsage({
         break;
       case "claude":
         summary = await loadClaudeRows(start, end);
+        break;
+      case "cline":
+        summary = await loadClineRows(start, end);
         break;
       case "codex":
         summary = await loadCodexRows(start, end, warnings);

@@ -7,6 +7,7 @@ export interface ProviderSelectionValues {
   antigravity: boolean;
   amp: boolean;
   claude: boolean;
+  cline: boolean;
   codex: boolean;
   continue?: boolean;
   cursor: boolean;
@@ -25,6 +26,7 @@ const outputProviderIds: ProviderId[] = [
   "antigravity",
   "amp",
   "claude",
+  "cline",
   "codex",
   "continue",
   "cursor",
