@@ -239,14 +239,13 @@ export function drawModelsTableCard(
     `<tspan fill="${textPrimary}" font-size="14" font-weight="600">${escapeXml(providerTitle)} Models</tspan><tspan dx="10" fill="${textMuted}" font-size="11" font-weight="400">${escapeXml(summaryLine)}</tspan>`,
   );
 
-  // Column X Coordinates (Right-aligned numbers for perfect numerical readability)
   const leftX = x + CARD_PADDING_X;
   const tableRightX = x + width - CARD_PADDING_X;
-  const inputX = leftX + 245;
-  const outputX = inputX + 75;
-  const cacheX = outputX + 85;
-  const totalX = cacheX + 85;
   const shareX = tableRightX;
+  const totalX = tableRightX - 100;
+  const cacheX = totalX - 90;
+  const outputX = cacheX - 85;
+  const inputX = outputX - 75;
 
   const tableHeaderY = y + CARD_PADDING_TOP + HEADER_HEIGHT;
 
@@ -306,7 +305,7 @@ export function drawModelsTableCard(
         "dominant-baseline": "central",
         "font-family": fontFamily,
       },
-      escapeXml(truncateText(model.name, 28)),
+      escapeXml(truncateText(model.name, 36)),
     );
 
     // Input tokens

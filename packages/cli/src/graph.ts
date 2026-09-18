@@ -435,6 +435,7 @@ function getSectionLayout(weekCount: number) {
   const gap = 2;
   const leftLabelWidth = 34;
   const rightPadding = 20;
+  const minWeekCount = 53;
   const headerCaptionY = 0;
   const headerValueY = headerCaptionY + metricCaptionFontSize + captionValueGap;
   const topMetricHeight = headerValueY + metricValueFontSize;
@@ -445,6 +446,8 @@ function getSectionLayout(weekCount: number) {
   const gridTop = topPadding + monthHeaderHeight;
   const gridHeight = 7 * cellSize + 6 * gap;
   const gridWidth = weekCount * cellSize + Math.max(weekCount - 1, 0) * gap;
+  const minWidth =
+    leftLabelWidth + minWeekCount * cellSize + (minWeekCount - 1) * gap + rightPadding;
   const legendY = gridTop + gridHeight + 28;
   const legendBottomY = legendY + cellSize;
   const noteY = legendBottomY + 14;
@@ -452,7 +455,7 @@ function getSectionLayout(weekCount: number) {
   const footerCaptionY = legendBottomY + footerTopPadding;
   const footerValueY = footerCaptionY + metricCaptionFontSize + captionValueGap;
   const statsBottomPadding = 12;
-  const width = leftLabelWidth + gridWidth + rightPadding;
+  const width = Math.max(minWidth, leftLabelWidth + gridWidth + rightPadding);
   const height = footerValueY + metricValueFontSize + statsBottomPadding;
 
   return {
