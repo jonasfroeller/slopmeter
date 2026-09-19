@@ -1,5 +1,6 @@
 import type { SVGBuilderInstance } from "svg-builder";
 import type { DailyUsage, ModelTableEntry } from "./interfaces";
+import { estimateTextWidth, wrapText } from "./text-layout";
 
 export type { ModelTableEntry };
 
@@ -147,18 +148,72 @@ const CARD_PADDING_X = 16;
 const CARD_PADDING_TOP = 16;
 const CARD_PADDING_BOTTOM = 14;
 const HEADER_HEIGHT = 38;
+const TITLE_FONT_SIZE = 14;
+const TITLE_LINE_HEIGHT = 17;
+const SUMMARY_FONT_SIZE = 11;
+const SUMMARY_LINE_HEIGHT = 14;
+const SUMMARY_GAP = 3;
 const TABLE_HEADER_HEIGHT = 20;
 const ROW_HEIGHT = 22;
 const FOOTER_TOTAL_HEIGHT = 26;
 
-export function getModelsCardHeight(modelCount: number): number {
+interface ModelsCardHeaderLayout {
+  titleLines: string[];
+  summaryOnOwnLine: boolean;
+  height: number;
+}
+
+function getModelsCardHeaderLayout(
+  width: number,
+  providerTitle: string,
+  summaryLine: string,
+): ModelsCardHeaderLayout {
+  const title = `${providerTitle} Models`;
+  const availableWidth = width - CARD_PADDING_X * 2;
+  const inlineWidth =
+    estimateTextWidth(title, TITLE_FONT_SIZE) +
+    10 +
+    estimateTextWidth(summaryLine, SUMMARY_FONT_SIZE);
+
+  if (inlineWidth <= availableWidth) {
+    return {
+      titleLines: [title],
+      summaryOnOwnLine: false,
+      height: HEADER_HEIGHT,
+    };
+  }
+
+  const titleLines = wrapText(title, availableWidth, TITLE_FONT_SIZE);
+
+  return {
+    titleLines,
+    summaryOnOwnLine: true,
+    height:
+      HEADER_HEIGHT +
+      Math.max(titleLines.length - 1, 0) * TITLE_LINE_HEIGHT +
+      SUMMARY_LINE_HEIGHT,
+  };
+}
+
+export function getModelsCardHeight(
+  modelCount: number,
+  width = Number.POSITIVE_INFINITY,
+  providerTitle = "",
+  summaryLine = "",
+): number {
   if (modelCount === 0) {
     return 0;
   }
 
+  const headerHeight = getModelsCardHeaderLayout(
+    width,
+    providerTitle,
+    summaryLine,
+  ).height;
+
   return (
     CARD_PADDING_TOP +
-    HEADER_HEIGHT +
+    headerHeight +
     TABLE_HEADER_HEIGHT +
     modelCount * ROW_HEIGHT +
     FOOTER_TOTAL_HEIGHT +
@@ -187,7 +242,18 @@ export function drawModelsTableCard(
     return svg;
   }
 
-  const cardHeight = getModelsCardHeight(summary.models.length);
+  const summaryLine = `${summary.models.length} models • ${formatCompactTokens(summary.grandTotal)} tokens total`;
+  const headerLayout = getModelsCardHeaderLayout(
+    width,
+    providerTitle,
+    summaryLine,
+  );
+  const cardHeight = getModelsCardHeight(
+    summary.models.length,
+    width,
+    providerTitle,
+    summaryLine,
+  );
   const isDark = colorMode === "dark";
 
   const cardBg = isDark ? "#18181b" : "#f8fafc";
@@ -227,17 +293,64 @@ export function drawModelsTableCard(
   );
 
   // Card Title + Summary Subtitle
-  const summaryLine = `${summary.models.length} models • ${formatCompactTokens(summary.grandTotal)} tokens total`;
-
   svg = svg.text(
-    {
-      x: x + CARD_PADDING_X,
-      y: y + CARD_PADDING_TOP + 14,
-      "dominant-baseline": "hanging",
-      "font-family": fontFamily,
-    },
-    `<tspan fill="${textPrimary}" font-size="14" font-weight="600">${escapeXml(providerTitle)} Models</tspan><tspan dx="10" fill="${textMuted}" font-size="11" font-weight="400">${escapeXml(summaryLine)}</tspan>`,
+    headerLayout.summaryOnOwnLine
+      ? {
+          x: x + CARD_PADDING_X,
+          y: y + CARD_PADDING_TOP + 14,
+          fill: textPrimary,
+          "font-size": TITLE_FONT_SIZE,
+          "font-weight": 600,
+          "dominant-baseline": "hanging",
+          "font-family": fontFamily,
+        }
+      : {
+          x: x + CARD_PADDING_X,
+          y: y + CARD_PADDING_TOP + 14,
+          "dominant-baseline": "hanging",
+          "font-family": fontFamily,
+        },
+    headerLayout.summaryOnOwnLine
+      ? escapeXml(headerLayout.titleLines[0] ?? "")
+      : `<tspan fill="${textPrimary}" font-size="${TITLE_FONT_SIZE}" font-weight="600">${escapeXml(providerTitle)} Models</tspan><tspan dx="10" fill="${textMuted}" font-size="${SUMMARY_FONT_SIZE}" font-weight="400">${escapeXml(summaryLine)}</tspan>`,
   );
+
+  if (headerLayout.summaryOnOwnLine) {
+    for (const [index, titleLine] of headerLayout.titleLines
+      .slice(1)
+      .entries()) {
+      svg = svg.text(
+        {
+          x: x + CARD_PADDING_X,
+          y: y + CARD_PADDING_TOP + 14 + (index + 1) * TITLE_LINE_HEIGHT,
+          fill: textPrimary,
+          "font-size": TITLE_FONT_SIZE,
+          "font-weight": 600,
+          "dominant-baseline": "hanging",
+          "font-family": fontFamily,
+        },
+        escapeXml(titleLine),
+      );
+    }
+
+    svg = svg.text(
+      {
+        x: x + CARD_PADDING_X,
+        y:
+          y +
+          CARD_PADDING_TOP +
+          14 +
+          headerLayout.titleLines.length * TITLE_LINE_HEIGHT +
+          SUMMARY_GAP,
+        fill: textMuted,
+        "font-size": SUMMARY_FONT_SIZE,
+        "font-weight": 400,
+        "dominant-baseline": "hanging",
+        "font-family": fontFamily,
+      },
+      escapeXml(summaryLine),
+    );
+  }
 
   const leftX = x + CARD_PADDING_X;
   const tableRightX = x + width - CARD_PADDING_X;
@@ -247,7 +360,7 @@ export function drawModelsTableCard(
   const outputX = cacheX - 85;
   const inputX = outputX - 75;
 
-  const tableHeaderY = y + CARD_PADDING_TOP + HEADER_HEIGHT;
+  const tableHeaderY = y + CARD_PADDING_TOP + headerLayout.height;
 
   // Table Headers
   const headerProps = {

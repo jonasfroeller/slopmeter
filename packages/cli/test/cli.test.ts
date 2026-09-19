@@ -1044,7 +1044,7 @@ test("Gemini keeps same message IDs from different sessions distinct", async (t)
   );
 });
 
-test("Gemini CLI participates in multi-provider output order", async (t) => {
+test("Gemini CLI participates in multi-provider token sorting", async (t) => {
   const workspace = createTempWorkspace("gemini-default-order");
 
   t.after(() => {
@@ -1097,7 +1097,7 @@ test("Gemini CLI participates in multi-provider output order", async (t) => {
 
   assert.deepEqual(
     payload.providers.map((provider) => provider.provider),
-    ["gemini", "pi"],
+    ["pi", "gemini"],
   );
 });
 
@@ -1809,4 +1809,3 @@ test("--models includes aggregated models breakdown table in JSON and SVG output
   assert.match(svgContent, /gemini-2\.5-flash/);
   assert.match(svgContent, /gemini-2\.5-pro/);
 });
-

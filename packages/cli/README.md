@@ -21,12 +21,10 @@ npm install -g slopmeter
 slopmeter
 ```
 
-
-
 ## Usage
 
 ```bash
-slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 ```
 
 By default, the CLI:
@@ -56,6 +54,8 @@ By default, the CLI:
 - `--windsurf`: include only Windsurf data
 - `--warp`: include only Warp data
 - `--all`: merge all providers into one combined graph
+- `--sort <tokens|name>`: sort provider sections by total token usage or provider name (default: `tokens`)
+- `--order <asc|desc>`: sort ascending or descending (default: `desc`)
 - `--dark`: render the image with the dark theme
 - `-f, --format <png|svg|json>`: choose the output format
 - `-o, --output <path>`: write output to a custom path
@@ -85,6 +85,12 @@ Render only Codex usage:
 
 ```bash
 npx slopmeter --codex
+```
+
+Sort an all-provider report alphabetically:
+
+```bash
+npx slopmeter --sort name --order asc
 ```
 
 Render only Cline usage:

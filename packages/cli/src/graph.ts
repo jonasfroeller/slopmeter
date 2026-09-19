@@ -7,6 +7,7 @@ import {
   drawModelsTableCard,
   getModelsCardHeight,
 } from "./models-card";
+import { estimateTextWidth, wrapText } from "./text-layout";
 
 type HeatmapThemeId = ProviderId | "all";
 
@@ -41,6 +42,9 @@ interface SectionLayout {
   noteY: number;
   footerCaptionY: number;
   footerValueY: number;
+  titleFontSize: number;
+  titleLineHeight: number;
+  titleLines: string[];
 }
 
 interface DrawHeatmapSectionOptions {
@@ -50,7 +54,6 @@ interface DrawHeatmapSectionOptions {
   layout: SectionLayout;
   daily: DailyUsage[];
   insights?: Insights;
-  title: string;
   titleCaption?: string;
   colors: HeatmapTheme["colors"];
   colorMode: ColorMode;
@@ -478,6 +481,7 @@ const metricCaptionFontSize = 9;
 const metricValueFontSize = 14;
 const captionValueGap = 4;
 const heatmapGamma = 0.7;
+const topMetricGap = 120;
 
 const surfacePalettes: Record<ColorMode, SurfacePalette> = {
   light: {
@@ -620,7 +624,11 @@ function getCalendarGrid(startDate: Date, endDate: Date) {
   return { weeks, monthLabels };
 }
 
-function getSectionLayout(weekCount: number) {
+function getSectionLayout(
+  weekCount: number,
+  title: string,
+  titleCaption?: string,
+) {
   const cellSize = 11;
   const gap = 2;
   const leftLabelWidth = 34;
@@ -629,15 +637,40 @@ function getSectionLayout(weekCount: number) {
   const headerCaptionY = 0;
   const headerValueY = headerCaptionY + metricCaptionFontSize + captionValueGap;
   const topMetricHeight = headerValueY + metricValueFontSize;
-  const topPadding = Math.max(providerTitleFontSize, topMetricHeight) + 20;
+  const titleFontSize = titleCaption
+    ? metricValueFontSize
+    : providerTitleFontSize;
+  const titleLineHeight = titleFontSize + 4;
   const monthHeaderHeight = 20;
-  const titleY = 0;
-  const monthLabelY = topPadding + 4;
-  const gridTop = topPadding + monthHeaderHeight;
   const gridHeight = 7 * cellSize + 6 * gap;
   const gridWidth = weekCount * cellSize + Math.max(weekCount - 1, 0) * gap;
   const minWidth =
-    leftLabelWidth + minWeekCount * cellSize + (minWeekCount - 1) * gap + rightPadding;
+    leftLabelWidth +
+    minWeekCount * cellSize +
+    (minWeekCount - 1) * gap +
+    rightPadding;
+  const width = Math.max(minWidth, leftLabelWidth + gridWidth + rightPadding);
+  const leftColumnX = 8;
+  const rightEdge = width - 8;
+  const headerInputX = rightEdge - topMetricGap * 2;
+  const inlineTitleMaxWidth = headerInputX - leftColumnX - 16;
+  const titleOverflow =
+    estimateTextWidth(title, titleFontSize) > inlineTitleMaxWidth;
+  const titleLines = titleOverflow
+    ? wrapText(title, width - leftColumnX * 2, titleFontSize)
+    : [title];
+  const titleY = titleOverflow
+    ? topMetricHeight + 8
+    : titleCaption
+      ? headerValueY
+      : 0;
+  const titleHeight = titleOverflow
+    ? titleLines.length * titleLineHeight
+    : titleFontSize;
+  const headerContentHeight = Math.max(topMetricHeight, titleY + titleHeight);
+  const topPadding = headerContentHeight + 20;
+  const monthLabelY = topPadding + 4;
+  const gridTop = topPadding + monthHeaderHeight;
   const legendY = gridTop + gridHeight + 28;
   const legendBottomY = legendY + cellSize;
   const noteY = legendBottomY + 14;
@@ -645,7 +678,6 @@ function getSectionLayout(weekCount: number) {
   const footerCaptionY = legendBottomY + footerTopPadding;
   const footerValueY = footerCaptionY + metricCaptionFontSize + captionValueGap;
   const statsBottomPadding = 12;
-  const width = Math.max(minWidth, leftLabelWidth + gridWidth + rightPadding);
   const height = footerValueY + metricValueFontSize + statsBottomPadding;
 
   return {
@@ -663,6 +695,9 @@ function getSectionLayout(weekCount: number) {
     noteY,
     footerCaptionY,
     footerValueY,
+    titleFontSize,
+    titleLineHeight,
+    titleLines,
   };
 }
 
@@ -675,7 +710,6 @@ function drawHeatmapSection(
     layout,
     daily,
     insights,
-    title,
     titleCaption,
     colors,
     colorMode,
@@ -715,7 +749,6 @@ function drawHeatmapSection(
     totalTokens += row.total;
   }
 
-  const topMetricGap = 120;
   const headerInputX = rightEdge - topMetricGap * 2;
   const headerOutputX = rightEdge - topMetricGap;
   const totalTokensLabel = formatTokenTotal(totalTokens);
@@ -737,31 +770,20 @@ function drawHeatmapSection(
       },
       caption(titleCaption),
     );
+  }
 
+  for (const [index, titleLine] of layout.titleLines.entries()) {
     svg = svg.text(
       {
         x: leftColumnX,
-        y: y + layout.headerValueY,
+        y: y + layout.titleY + index * layout.titleLineHeight,
         fill: palette.text,
-        "font-size": metricValueFontSize,
+        "font-size": layout.titleFontSize,
         "font-weight": 600,
         "dominant-baseline": "hanging",
         "font-family": fontFamily,
       },
-      title,
-    );
-  } else {
-    svg = svg.text(
-      {
-        x: leftColumnX,
-        y: y + layout.titleY,
-        fill: palette.text,
-        "font-size": providerTitleFontSize,
-        "font-weight": 600,
-        "dominant-baseline": "hanging",
-        "font-family": fontFamily,
-      },
-      title,
+      escapeXml(titleLine),
     );
   }
 
@@ -1102,7 +1124,6 @@ export function renderUsageHeatmapsSvg({
   includeModelsCard = false,
 }: RenderUsageHeatmapsSvgOptions) {
   const grid = getCalendarGrid(startDate, endDate);
-  const layout = getSectionLayout(grid.weeks.length);
   const palette = surfacePalettes[colorMode];
   const horizontalPadding = 18;
   const topPadding = 30;
@@ -1111,20 +1132,35 @@ export function renderUsageHeatmapsSvg({
   const modelsCardGap = 16;
 
   const sectionMetrics = sections.map((section) => {
+    const layout = getSectionLayout(
+      grid.weeks.length,
+      section.title,
+      section.titleCaption,
+    );
+
     if (!includeModelsCard) {
-      return { modelsCount: 0, totalHeight: layout.height };
+      return { layout, modelsCount: 0, totalHeight: layout.height };
     }
 
     const summary = aggregateModelsTable(section.daily);
     const modelsCount = summary.models.length;
-    const modelsCardHeight = getModelsCardHeight(modelsCount);
+    const summaryLine = `${summary.models.length} models • ${formatTokenTotal(summary.grandTotal)} tokens total`;
+    const modelsCardHeight = getModelsCardHeight(
+      modelsCount,
+      layout.width,
+      section.title,
+      summaryLine,
+    );
     const totalHeight =
       modelsCount > 0
         ? layout.height + modelsCardGap + modelsCardHeight
         : layout.height;
 
-    return { modelsCount, totalHeight };
+    return { layout, modelsCount, totalHeight };
   });
+
+  const fallbackLayout = getSectionLayout(grid.weeks.length, "");
+  const layout = sectionMetrics[0]?.layout ?? fallbackLayout;
 
   const width = horizontalPadding * 2 + layout.width;
   const contentHeight = sectionMetrics.reduce(
@@ -1159,10 +1195,9 @@ export function renderUsageHeatmapsSvg({
       x: horizontalPadding,
       y: currentY,
       grid,
-      layout,
+      layout: metrics.layout,
       daily: section.daily,
       insights: section.insights,
-      title: section.title,
       titleCaption: section.titleCaption,
       colors: section.colors,
       colorMode,
@@ -1175,8 +1210,8 @@ export function renderUsageHeatmapsSvg({
 
       svg = drawModelsTableCard(svg, {
         x: horizontalPadding,
-        y: currentY + layout.height + modelsCardGap,
-        width: layout.width,
+        y: currentY + metrics.layout.height + modelsCardGap,
+        width: metrics.layout.width,
         daily: section.daily,
         colorMode,
         accentColor,

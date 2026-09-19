@@ -12,6 +12,12 @@ import type {
   UsageProviderId,
 } from "./interfaces";
 import { getDefaultOutputPath } from "./output-path";
+import {
+  sortProviderSummaries,
+  type ProviderSortBy,
+  type ProviderSortDirection,
+  type ProviderSortOptions,
+} from "./provider-sort";
 import type { ProviderId } from "./providers";
 import { formatLocalDate, loadEnv } from "./lib/utils";
 import {
@@ -29,6 +35,8 @@ type OutputFormat = "png" | "svg" | "json";
 interface CliArgValues {
   output?: string;
   format?: string;
+  sort: ProviderSortBy;
+  order: ProviderSortDirection;
   help: boolean;
   dark: boolean;
   models: boolean;
@@ -57,6 +65,8 @@ interface CliArgValues {
 const PNG_BASE_WIDTH = 1000;
 const PNG_SCALE = 4;
 const PNG_RENDER_WIDTH = PNG_BASE_WIDTH * PNG_SCALE;
+const PNG_MAX_DIMENSION = 32760;
+const SVG_RENDER_DENSITY = 192;
 const JSON_EXPORT_VERSION = "2026-03-13";
 
 const HELP_TEXT = `slopmeter
@@ -64,10 +74,12 @@ const HELP_TEXT = `slopmeter
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
+  --sort <tokens|name>        Sort provider sections by total tokens or name (default: tokens)
+  --order <asc|desc>          Sort direction (default: desc)
   --antigravity               Render Antigravity graph
   --amp                       Render Amp graph
   --claude                    Render Claude Code graph
@@ -104,6 +116,8 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
     ow.object.exactShape({
       output: ow.optional.string.nonEmpty,
       format: ow.optional.string.nonEmpty,
+      sort: ow.string.oneOf(["name", "tokens"] as const),
+      order: ow.string.oneOf(["asc", "desc"] as const),
       help: ow.boolean,
       dark: ow.boolean,
       models: ow.boolean,
@@ -168,8 +182,26 @@ async function writeOutputImage(
     return;
   }
 
-  const pngBuffer = await sharp(Buffer.from(svg), { density: 192 })
-    .resize({ width: PNG_RENDER_WIDTH })
+  const svgRoot = svg.match(/<svg\b[^>]*>/)?.[0] ?? "";
+  const svgWidth = Number(svgRoot.match(/\bwidth="([\d.]+)"/)?.[1]);
+  const svgHeight = Number(svgRoot.match(/\bheight="([\d.]+)"/)?.[1]);
+  const svgMaxDimension = Math.max(svgWidth, svgHeight);
+  const density = Number.isFinite(svgMaxDimension)
+    ? Math.max(
+        1,
+        Math.min(
+          SVG_RENDER_DENSITY,
+          Math.floor((PNG_MAX_DIMENSION * 72) / svgMaxDimension),
+        ),
+      )
+    : SVG_RENDER_DENSITY;
+
+  const pngBuffer = await sharp(Buffer.from(svg), { density })
+    .resize({
+      width: PNG_RENDER_WIDTH,
+      height: PNG_MAX_DIMENSION,
+      fit: "inside",
+    })
     .flatten({ background })
     .png()
     .toBuffer();
@@ -223,7 +255,9 @@ function printProviderAvailability(
   providers: ProviderId[],
 ) {
   for (const provider of providers) {
-    const status = availabilityByProvider[provider] ? "available" : "not available";
+    const status = availabilityByProvider[provider]
+      ? "available"
+      : "not available";
 
     process.stdout.write(`${providerStatusLabel[provider]} ${status}\n`);
   }
@@ -293,10 +327,14 @@ function getDefaultOutputProviderIds(
 
 function getMergedProviderTitle(
   rowsByProvider: Record<ProviderId, UsageSummary | null>,
+  sortOptions: ProviderSortOptions,
 ) {
-  return providerIds
-    .filter((provider) => rowsByProvider[provider] !== null)
-    .map((provider) => heatmapThemes[provider].title)
+  const summaries = providerIds
+    .map((provider) => rowsByProvider[provider])
+    .filter((summary): summary is UsageSummary => summary !== null);
+
+  return sortProviderSummaries(summaries, sortOptions)
+    .map((summary) => heatmapThemes[summary.provider].title)
     .join(" / ");
 }
 
@@ -373,6 +411,8 @@ async function main() {
     options: {
       output: { type: "string", short: "o" },
       format: { type: "string", short: "f" },
+      sort: { type: "string", default: "tokens" },
+      order: { type: "string", default: "desc" },
       help: { type: "boolean", short: "h", default: false },
       dark: { type: "boolean", default: false },
       models: { type: "boolean", short: "m", default: false },
@@ -440,11 +480,13 @@ async function main() {
 
     printProviderAvailability(availabilityByProvider, inspectedProviders);
 
-    const exportProviders = getOutputProviders(
-      values,
-      availabilityByProvider,
-      rowsByProvider,
-      end,
+    const sortOptions: ProviderSortOptions = {
+      by: values.sort,
+      direction: values.order,
+    };
+    const exportProviders = sortProviderSummaries(
+      getOutputProviders(values, availabilityByProvider, rowsByProvider, end),
+      sortOptions,
     );
 
     const outputPath = resolve(
@@ -480,7 +522,7 @@ async function main() {
           insights,
           title:
             provider === "all"
-              ? getMergedProviderTitle(rowsByProvider)
+              ? getMergedProviderTitle(rowsByProvider, sortOptions)
               : heatmapThemes[provider].title,
           titleCaption: heatmapThemes[provider].titleCaption,
           colors: heatmapThemes[provider].colors,

@@ -55,6 +55,9 @@ slopmeter --dark --format svg
 # Merge all providers into one graph
 slopmeter --all
 
+# Sort provider sections alphabetically (tokens descending is the default)
+slopmeter --sort name --order asc
+
 # Provider filters (optional)
 slopmeter --claude
 slopmeter --cline
@@ -167,7 +170,6 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `SLOPMETER_FILE_PROCESS_CONCURRENCY`: positive integer file-processing limit for Claude Code, Codex, and Freebuff usage files. Default: `16`.
 - `SLOPMETER_MAX_JSONL_RECORD_BYTES`: byte cap for Claude Code and Codex JSONL records, Freebuff chat JSON documents, OpenCode JSON documents, and OpenCode SQLite `message.data` payloads. Default: `67108864` (`64 MB`).
 
-
 ## JSONL oversized-record behavior
 
 - Claude Code and Codex now share the same bounded JSONL record splitter and do not materialize whole files in memory.
@@ -181,7 +183,6 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - Pi Coding Agent session logs are streamed and only assistant messages are parsed for usage aggregation.
 
 ## Data locations
-
 
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` (comma-separated dirs) or defaults `~/.config/claude/projects` and `~/.claude/projects`
 - Cline: `$CLINE_CONFIG_DIR/globalStorage/saoudrizwan.claude-dev/tasks/**/ui_messages.json`, or the VS Code `User` global-storage roots for Code, Code Insiders, and VSCodium
