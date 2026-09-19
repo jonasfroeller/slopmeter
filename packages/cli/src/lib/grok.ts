@@ -121,8 +121,12 @@ export function createGrokTokenTotals(metrics: GrokTokenMetrics): DailyTokenTota
     reportedTotal > 0
       ? Math.max(reportedTotal, input + output)
       : input + output;
-
-  return {
+  const reportedCostTicks = metrics.costUsdTicks ?? 0;
+  const reportedCostUsd =
+    Number.isFinite(reportedCostTicks) && reportedCostTicks > 0
+      ? reportedCostTicks / 10_000_000_000
+      : 0;
+  const tokenTotals: DailyTokenTotals = {
     input,
     output,
     cache: {
@@ -131,6 +135,19 @@ export function createGrokTokenTotals(metrics: GrokTokenMetrics): DailyTokenTota
     },
     total,
   };
+
+  if (reportedCostUsd > 0) {
+    tokenTotals.reportedCost = {
+      amountUsd: reportedCostUsd,
+      tokens: {
+        input,
+        output,
+        cache: { input: cacheRead, output: cacheCreation },
+      },
+    };
+  }
+
+  return tokenTotals;
 }
 
 export async function getGrokSessionDirs(): Promise<string[]> {

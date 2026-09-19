@@ -17,6 +17,25 @@ export type CodegraphProviderId =
   | "opencode"
   | "pi";
 
+export type CodegraphCostBasis =
+  | "reported"
+  | "estimated"
+  | "free"
+  | "unknown"
+  | "mixed";
+
+export type CodegraphCostCoverage = "complete" | "partial" | "unknown";
+
+export interface CodegraphUsageCost {
+  amount: number;
+  currency: string;
+  basis: CodegraphCostBasis;
+  coverage: CodegraphCostCoverage;
+  pricedTokens: number;
+  unpricedTokens: number;
+  isFree?: boolean;
+}
+
 export interface CodegraphModelUsage {
   name: string;
   tokens: {
@@ -28,6 +47,7 @@ export interface CodegraphModelUsage {
     };
     total: number;
   };
+  cost?: CodegraphUsageCost;
 }
 
 export interface CodegraphDailyUsage {
@@ -40,6 +60,7 @@ export interface CodegraphDailyUsage {
   };
   total: number;
   breakdown: CodegraphModelUsage[];
+  cost?: CodegraphUsageCost;
 }
 
 export interface CodegraphProviderInsights {
@@ -55,10 +76,18 @@ export interface CodegraphProviderData {
   insights?: CodegraphProviderInsights;
 }
 
+export interface CodegraphPricingMetadata {
+  baseCurrency: string;
+  currency: string;
+  fxAsOf: string;
+  rateCatalogVersion: string;
+}
+
 export interface CodegraphExportData {
   version: string;
   start: string;
   end: string;
+  pricing?: CodegraphPricingMetadata;
   providers: CodegraphProviderData[];
 }
 
@@ -181,6 +210,85 @@ function formatTokenTotal(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function mergeUsageCosts(
+  left: CodegraphUsageCost | undefined,
+  right: CodegraphUsageCost | undefined,
+) {
+  if (!left) {
+    return right;
+  }
+
+  if (!right) {
+    return left;
+  }
+
+  const pricedTokens = left.pricedTokens + right.pricedTokens;
+  const unpricedTokens = left.unpricedTokens + right.unpricedTokens;
+
+  return {
+    amount: left.amount + right.amount,
+    currency: left.currency,
+    basis: left.basis === right.basis ? left.basis : "mixed",
+    coverage:
+      unpricedTokens > 0
+        ? "partial"
+        : pricedTokens > 0
+          ? "complete"
+          : "unknown",
+    pricedTokens,
+    unpricedTokens,
+    ...(left.isFree === true && right.isFree === true
+      ? { isFree: true }
+      : left.isFree === false || right.isFree === false
+        ? { isFree: false }
+        : left.isFree !== undefined
+          ? { isFree: left.isFree }
+          : right.isFree !== undefined
+            ? { isFree: right.isFree }
+            : {}),
+  } satisfies CodegraphUsageCost;
+}
+
+function formatUsageCost(cost: CodegraphUsageCost | undefined) {
+  if (!cost || cost.coverage === "unknown") {
+    return "Unavailable";
+  }
+
+  if (cost.basis === "free" && cost.amount === 0) {
+    return "Free";
+  }
+
+  let formatted: string;
+
+  try {
+    formatted = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: cost.currency,
+      maximumFractionDigits: cost.amount < 1 ? 4 : 2,
+    }).format(cost.amount);
+  } catch {
+    formatted = `${cost.currency} ${cost.amount.toFixed(2)}`;
+  }
+
+  if (cost.coverage === "partial") {
+    return `${formatted} (partial)`;
+  }
+
+  if (cost.isFree && cost.amount > 0) {
+    return `Free (${formatted})`;
+  }
+
+  if (cost.basis === "reported") {
+    return `${formatted} (reported)`;
+  }
+
+  if (cost.basis === "estimated") {
+    return `${formatted} (estimated)`;
+  }
+
+  return formatted;
+}
+
 function computeStreaks(allDays: string[], valueByDate: Map<string, number>) {
   let longestStreak = 0;
   let running = 0;
@@ -287,6 +395,10 @@ function AgentUsageHeatmapSection({
   const totalInput = provider.daily.reduce((sum, row) => sum + row.input, 0);
   const totalOutput = provider.daily.reduce((sum, row) => sum + row.output, 0);
   const totalTokens = provider.daily.reduce((sum, row) => sum + row.total, 0);
+  const totalCost = provider.daily.reduce<CodegraphUsageCost | undefined>(
+    (sum, row) => mergeUsageCosts(sum, row.cost),
+    undefined,
+  );
   const { longestStreak, currentStreak } = computeStreaks(allDays, valueByDate);
   const colorScale = getColorScale();
 
@@ -304,6 +416,13 @@ function AgentUsageHeatmapSection({
             caption="Total tokens"
             value={formatTokenTotal(totalTokens)}
           />
+          {totalCost ? (
+            <Metric
+              caption="Estimated cost"
+              value={formatUsageCost(totalCost)}
+              muted={totalCost.coverage === "unknown"}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -423,6 +542,9 @@ function AgentUsageHeatmapSection({
                         In: {formatTokenTotal(dayRow.input)} | Out:{" "}
                         {formatTokenTotal(dayRow.output)}
                       </div>
+                      <div className="text-muted-foreground">
+                        Cost: {formatUsageCost(dayRow.cost)}
+                      </div>
                       {dayRow.breakdown.slice(0, 3).map((model) => {
                         return (
                           <div
@@ -430,6 +552,8 @@ function AgentUsageHeatmapSection({
                             className="text-muted-foreground"
                           >
                             {model.name}: {formatTokenTotal(model.tokens.total)}
+                            {" · "}
+                            {formatUsageCost(model.cost)}
                           </div>
                         );
                       })}

@@ -1809,3 +1809,104 @@ test("--models includes aggregated models breakdown table in JSON and SVG output
   assert.match(svgContent, /gemini-2\.5-flash/);
   assert.match(svgContent, /gemini-2\.5-pro/);
 });
+
+test("--currency and --pricing add cost metadata to JSON and SVG outputs", async (t) => {
+  const workspace = createTempWorkspace("pricing-flag");
+
+  t.after(() => {
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
+  const geminiDir = join(workspace, "gemini");
+  const sessionFile = join(
+    geminiDir,
+    "tmp",
+    "project-a",
+    "chats",
+    "session-pricing.json",
+  );
+  const pricingFile = join(workspace, "pricing.json");
+  const jsonOutput = join(workspace, "out.json");
+  const svgOutput = join(workspace, "out.svg");
+
+  writeJsonFile(
+    pricingFile,
+    JSON.stringify({
+      baseCurrency: "USD",
+      fx: { asOf: "2026-09-19", rates: { EUR: 0.5 } },
+      rules: [
+        {
+          provider: "gemini",
+          model: "gemini-3.1-pro-preview",
+          inputPerMillion: 1,
+          outputPerMillion: 2,
+          cacheReadPerMillion: 0.1,
+          cacheWritePerMillion: 0.2,
+        },
+      ],
+    }),
+  );
+  writeJsonFile(
+    sessionFile,
+    JSON.stringify({
+      sessionId: "gemini-pricing-1",
+      startTime: recentIso(),
+      lastUpdated: recentIso(),
+      messages: [
+        geminiMessage({
+          model: "gemini-3.1-pro-preview",
+          input: 100,
+          output: 50,
+          total: 150,
+        }),
+      ],
+    }),
+  );
+
+  const jsonResult = await runCli(
+    [
+      "--gemini",
+      "--currency",
+      "EUR",
+      "--pricing",
+      pricingFile,
+      "--format",
+      "json",
+      "--output",
+      jsonOutput,
+    ],
+    { GEMINI_CONFIG_DIR: geminiDir },
+  );
+
+  assert.equal(jsonResult.code, 0, jsonResult.stderr || jsonResult.stdout);
+  const jsonContent = JSON.parse(readFileSync(jsonOutput, "utf8"));
+  const day = jsonContent.providers[0].daily[0];
+
+  assert.equal(jsonContent.pricing.currency, "EUR");
+  assert.equal(jsonContent.pricing.fxAsOf, "2026-09-19");
+  assert.equal(day.cost.currency, "EUR");
+  assert.equal(day.cost.basis, "estimated");
+  assert.equal(day.cost.coverage, "complete");
+  assert.equal(day.breakdown[0].cost.amount, 0.0001);
+
+  const svgResult = await runCli(
+    [
+      "--gemini",
+      "--models",
+      "--currency",
+      "EUR",
+      "--pricing",
+      pricingFile,
+      "--format",
+      "svg",
+      "--output",
+      svgOutput,
+    ],
+    { GEMINI_CONFIG_DIR: geminiDir },
+  );
+
+  assert.equal(svgResult.code, 0, svgResult.stderr || svgResult.stdout);
+  const svgContent = readFileSync(svgOutput, "utf8");
+  assert.match(svgContent, /ESTIMATED COST/);
+  assert.match(svgContent, /COST/);
+});

@@ -7,7 +7,10 @@ import sharp from "sharp";
 import { heatmapThemes, renderUsageHeatmapsSvg, type ColorMode } from "./graph";
 import type {
   JsonExportPayload,
+  JsonInsights,
+  JsonModelUsage,
   JsonUsageSummary,
+  ModelUsage,
   UsageSummary,
   UsageProviderId,
 } from "./interfaces";
@@ -30,11 +33,19 @@ import {
 } from "./providers";
 
 import { aggregateModelsTable } from "./models-card";
+import {
+  createPricingContext,
+  getPricingMetadata,
+  hasPricedCost,
+  priceUsageSummary,
+} from "./pricing";
 
 type OutputFormat = "png" | "svg" | "json";
 interface CliArgValues {
   output?: string;
   format?: string;
+  currency?: string;
+  pricing?: string;
   sort: ProviderSortBy;
   order: ProviderSortDirection;
   help: boolean;
@@ -67,19 +78,21 @@ const PNG_SCALE = 4;
 const PNG_RENDER_WIDTH = PNG_BASE_WIDTH * PNG_SCALE;
 const PNG_MAX_DIMENSION = 32760;
 const SVG_RENDER_DENSITY = 192;
-const JSON_EXPORT_VERSION = "2026-03-13";
+const JSON_EXPORT_VERSION = "2026-09-19";
 
 const HELP_TEXT = `slopmeter
 
 Generate rolling 1-year usage heatmap image(s) (today is the latest day).
 
 Usage:
-  slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+  slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--currency auto|EUR] [--pricing ./pricing.json] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 
 Options:
   --all                       Render one merged graph for all providers
   --sort <tokens|name>        Sort provider sections by total tokens or name (default: tokens)
   --order <asc|desc>          Sort direction (default: desc)
+  --currency <auto|ISO-4217>  Display estimated costs in this currency (default: auto)
+  --pricing <path>            Load custom model pricing and FX overrides from JSON
   --antigravity               Render Antigravity graph
   --amp                       Render Amp graph
   --claude                    Render Claude Code graph
@@ -116,6 +129,8 @@ function validateArgs(values: unknown): asserts values is CliArgValues {
     ow.object.exactShape({
       output: ow.optional.string.nonEmpty,
       format: ow.optional.string.nonEmpty,
+      currency: ow.optional.string.nonEmpty,
+      pricing: ow.optional.string.nonEmpty,
       sort: ow.string.oneOf(["name", "tokens"] as const),
       order: ow.string.oneOf(["asc", "desc"] as const),
       help: ow.boolean,
@@ -213,6 +228,32 @@ function writeOutputJson(outputPath: string, payload: JsonExportPayload) {
   writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function toJsonModelUsage(model: ModelUsage): JsonModelUsage {
+  return {
+    name: model.name,
+    tokens: model.tokens,
+    ...(model.cost ? { cost: model.cost } : {}),
+  };
+}
+
+function toJsonInsights(
+  insights: UsageSummary["insights"],
+): JsonInsights | undefined {
+  if (!insights) {
+    return undefined;
+  }
+
+  return {
+    streaks: insights.streaks,
+    ...(insights.mostUsedModel
+      ? { mostUsedModel: toJsonModelUsage(insights.mostUsedModel) }
+      : {}),
+    ...(insights.recentMostUsedModel
+      ? { recentMostUsedModel: toJsonModelUsage(insights.recentMostUsedModel) }
+      : {}),
+  };
+}
+
 function toJsonUsageSummary(
   summary: UsageSummary,
   includeModels = false,
@@ -223,7 +264,7 @@ function toJsonUsageSummary(
 
   return {
     provider: summary.provider,
-    insights: summary.insights,
+    insights: toJsonInsights(summary.insights),
     ...(models && models.length > 0 ? { models } : {}),
     daily: summary.daily.map((row) => ({
       date: formatLocalDate(row.date),
@@ -232,7 +273,8 @@ function toJsonUsageSummary(
       cache: row.cache,
       total: row.total,
       displayValue: row.displayValue,
-      breakdown: row.breakdown,
+      ...(row.cost ? { cost: row.cost } : {}),
+      breakdown: row.breakdown.map(toJsonModelUsage),
     })),
   };
 }
@@ -411,6 +453,8 @@ async function main() {
     options: {
       output: { type: "string", short: "o" },
       format: { type: "string", short: "f" },
+      currency: { type: "string" },
+      pricing: { type: "string" },
       sort: { type: "string", default: "tokens" },
       order: { type: "string", default: "desc" },
       help: { type: "boolean", short: "h", default: false },
@@ -459,6 +503,7 @@ async function main() {
     const { start, end } = getDateWindow();
     const colorMode: ColorMode = values.dark ? "dark" : "light";
     const format = inferFormat(values.format, values.output);
+    const pricingContext = createPricingContext(values.currency, values.pricing);
     const requestedProviders = values.all
       ? providerIds
       : getRequestedProviders(values);
@@ -466,11 +511,21 @@ async function main() {
       requestedProviders.length > 0 ? requestedProviders : providerIds;
     const availabilityByProvider =
       await getProviderAvailability(inspectedProviders);
-    const { rowsByProvider, warnings } = await aggregateUsage({
+    const { rowsByProvider: rawRowsByProvider, warnings } = await aggregateUsage({
       start,
       end,
       requestedProviders,
     });
+
+    const rowsByProvider = { ...rawRowsByProvider };
+
+    for (const provider of providerIds) {
+      const summary = rowsByProvider[provider];
+
+      if (summary) {
+        rowsByProvider[provider] = priceUsageSummary(summary, pricingContext);
+      }
+    }
 
     spinner.stop();
 
@@ -502,6 +557,7 @@ async function main() {
         version: JSON_EXPORT_VERSION,
         start: formatLocalDate(start),
         end: formatLocalDate(end),
+        pricing: getPricingMetadata(pricingContext),
         providers: exportProviders.map((provider) =>
           toJsonUsageSummary(provider, values.models),
         ),
@@ -520,6 +576,13 @@ async function main() {
         sections: exportProviders.map(({ provider, daily, insights }) => ({
           daily,
           insights,
+          pricing: pricingContext.metadata,
+          showCost: hasPricedCost({
+            provider,
+            daily,
+            insights,
+            pricing: pricingContext.metadata,
+          }),
           title:
             provider === "all"
               ? getMergedProviderTitle(rowsByProvider, sortOptions)

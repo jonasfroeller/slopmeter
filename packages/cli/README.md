@@ -24,7 +24,7 @@ slopmeter
 ## Usage
 
 ```bash
-slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
+slopmeter [--all] [--sort tokens|name] [--order asc|desc] [--currency auto|ISO-4217] [--pricing ./pricing.json] [--antigravity] [--amp] [--claude] [--cline] [--codex] [--continue] [--cursor] [--fx] [--freebuff] [--gemini] [--grok] [--kilo] [--opencode] [--ollama] [--pi] [--roo] [--trae] [--windsurf] [--warp] [--models] [--dark] [--format png|svg|json] [--output ./heatmap-last-year.png]
 ```
 
 By default, the CLI:
@@ -56,6 +56,9 @@ By default, the CLI:
 - `--all`: merge all providers into one combined graph
 - `--sort <tokens|name>`: sort provider sections by total token usage or provider name (default: `tokens`)
 - `--order <asc|desc>`: sort ascending or descending (default: `desc`)
+- `--currency <auto|ISO-4217>`: display estimated costs in this currency; `auto` uses the runtime locale region and falls back to USD (time zone is not used)
+- `--pricing <path>`: load custom model rates and FX overrides from JSON
+- `--models`: include the detailed model breakdown card
 - `--dark`: render the image with the dark theme
 - `-f, --format <png|svg|json>`: choose the output format
 - `-o, --output <path>`: write output to a custom path
@@ -79,6 +82,12 @@ Write JSON for custom rendering:
 
 ```bash
 npx slopmeter --format json --output ./out/heatmap.json
+```
+
+Display costs in euros with custom pricing:
+
+```bash
+npx slopmeter --currency EUR --pricing ./pricing.json --format svg
 ```
 
 Render only Codex usage:
@@ -185,6 +194,35 @@ npx slopmeter --dark --format svg --output ./out/heatmap-dark.svg
 - If `--output` is omitted, the default filename becomes `heatmap-last-year.<ext>`, `heatmap-last-year_<providers>.<ext>` for explicit provider flags, or `heatmap-last-year_all.<ext>` for `--all`.
 - Supported extensions are `.png`, `.svg`, and `.json`.
 - If neither `--format` nor a recognized output extension is provided, PNG is used.
+
+## Pricing
+
+The CLI bundles reproducible USD model rates and an FX snapshot. It prices uncached input, uncached output, cache reads, and cache writes per million tokens; the existing token totals still include cache components. `--currency auto` uses the runtime locale region and falls back to USD; time zone is not used as a currency signal. Invalid pricing files and unsupported explicit currencies fail clearly.
+
+Custom pricing files use `baseCurrency: "USD"`, optional FX metadata, and model rules:
+
+```json
+{
+  "baseCurrency": "USD",
+  "fx": { "asOf": "2026-09-19", "rates": { "EUR": 0.85 } },
+  "rules": [
+    {
+      "provider": "codex",
+      "model": "my-model*",
+      "inputPerMillion": 1,
+      "outputPerMillion": 4,
+      "cacheReadPerMillion": 0.1,
+      "cacheWritePerMillion": 1.25
+    }
+  ]
+}
+```
+
+The bundled catalog contains first-party standard API rates only; Batch, priority, flex, marketplace, and subscription-credit rates are excluded. Reported provider costs take precedence over estimates. Free-tier/event labels and local Ollama usage use a matching API-equivalent model rate when available and display as `Free (€…)`; those values are included in aggregates. Local models without a matching rate display `Free`, while other unmatched usage remains unknown. Partial totals are labeled in SVG/PNG output, and unpriced model rows display `—`. With no priced usage, the token-only image remains unchanged.
+
+## JSON export
+
+Use `--format json` (or a `.json` output filename) for interactive rendering. The export version is `2026-09-19` and includes top-level pricing metadata. Daily and per-model usage can include `cost` objects with the amount, display currency, pricing basis, coverage, priced/unpriced token counts, and an optional `isFree` flag.
 
 ## Data locations
 

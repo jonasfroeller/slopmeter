@@ -81,6 +81,23 @@ test("FX token totals preserve cache fields and input/output totals", () => {
   );
 });
 
+test("FX token totals preserve reported provider costs", () => {
+  const totals = createFxTokenTotals({
+    cache_read_tokens: 800,
+    cache_write_tokens: 25,
+    input_tokens: 1_000,
+    output_tokens: 50,
+    total_cost: 0.42,
+  });
+
+  assert.equal(totals.reportedCost?.amountUsd, 0.42);
+  assert.deepEqual(totals.reportedCost?.tokens, {
+    input: 1_000,
+    output: 50,
+    cache: { input: 800, output: 25 },
+  });
+});
+
 test("FX timestamps parse millisecond and second epochs", () => {
   assert.equal(
     parseFxTimestamp(1_768_056_600_000)?.toISOString(),

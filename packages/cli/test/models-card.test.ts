@@ -144,3 +144,54 @@ test("drawModelsTableCard renders table headers, model rows, and total footer in
   assert.match(output, /Total/);
   assert.match(output, /100\.0%/);
 });
+
+test("drawModelsTableCard renders a cost column without changing token sorting", () => {
+  const daily = createMockDailyUsage();
+  daily[0]!.breakdown[0]!.cost = {
+    amount: 0.2,
+    currency: "USD",
+    basis: "estimated",
+    coverage: "complete",
+    pricedTokens: 1_400,
+    unpricedTokens: 0,
+  };
+  daily[1]!.breakdown[0]!.cost = {
+    amount: 0.3,
+    currency: "USD",
+    basis: "estimated",
+    coverage: "complete",
+    pricedTokens: 2_700,
+    unpricedTokens: 0,
+  };
+  daily[1]!.breakdown[1]!.cost = {
+    amount: 0,
+    currency: "USD",
+    basis: "unknown",
+    coverage: "unknown",
+    pricedTokens: 0,
+    unpricedTokens: 800,
+  };
+
+  let svg = svgBuilder.create().width(800).height(400);
+
+  svg = drawModelsTableCard(svg, {
+    x: 20,
+    y: 20,
+    width: 760,
+    daily,
+    colorMode: "light",
+    accentColor: "#14b8a6",
+    fontFamily: "sans-serif",
+    providerTitle: "Gemini",
+    showCost: true,
+  });
+
+  const output = svg.render();
+  const summary = aggregateModelsTable(daily);
+
+  assert.equal(summary.models[0]?.name, "Claude 3.7 Sonnet");
+  assert.equal(summary.totalCost?.coverage, "partial");
+  assert.match(output, /COST/);
+  assert.match(output, /\$0\.50/);
+  assert.match(output, /—/);
+});

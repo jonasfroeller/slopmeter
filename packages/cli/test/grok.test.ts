@@ -68,6 +68,23 @@ test("createGrokTokenTotals handles cache inclusion and totals correctly", () =>
   assert.equal(nonOverlapping.total, 4000);
 });
 
+test("createGrokTokenTotals converts reported cost ticks from fixed-point USD", () => {
+  const totals = createGrokTokenTotals({
+    inputTokens: 2_000,
+    outputTokens: 500,
+    cachedReadTokens: 1_500,
+    totalTokens: 2_500,
+    costUsdTicks: 5_000_000_000,
+  });
+
+  assert.equal(totals.reportedCost?.amountUsd, 0.5);
+  assert.deepEqual(totals.reportedCost?.tokens, {
+    input: 2_000,
+    output: 500,
+    cache: { input: 1_500, output: 0 },
+  });
+});
+
 test("loadGrokRows parses multi-turn usage.json records with model breakdown", async () => {
   const tempDir = await mkdtemp(join(tmpdir(), "slopmeter-grok-test-"));
   const sessionsDir = join(tempDir, "sessions", "test-project", "session-1");

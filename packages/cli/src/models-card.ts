@@ -1,5 +1,7 @@
 import type { SVGBuilderInstance } from "svg-builder";
 import type { DailyUsage, ModelTableEntry } from "./interfaces";
+import { formatUsageCost } from "./pricing";
+import { mergeUsageCosts } from "./lib/utils";
 import { estimateTextWidth, wrapText } from "./text-layout";
 
 export type { ModelTableEntry };
@@ -11,6 +13,7 @@ export interface ModelTableSummary {
   totalCacheInput: number;
   totalCacheOutput: number;
   grandTotal: number;
+  totalCost?: ModelTableEntry["cost"];
 }
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -28,6 +31,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
       cacheInput: number;
       cacheOutput: number;
       total: number;
+      cost?: ModelTableEntry["cost"];
     }
   >();
 
@@ -46,6 +50,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
       existing.cacheInput += model.tokens.cache.input;
       existing.cacheOutput += model.tokens.cache.output;
       existing.total += model.tokens.total;
+      existing.cost = mergeUsageCosts(existing.cost, model.cost);
       modelMap.set(model.name, existing);
     }
   }
@@ -55,6 +60,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
   let totalCacheInput = 0;
   let totalCacheOutput = 0;
   let grandTotal = 0;
+  let totalCost: ModelTableEntry["cost"];
 
   for (const stats of modelMap.values()) {
     totalInput += stats.input;
@@ -62,6 +68,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
     totalCacheInput += stats.cacheInput;
     totalCacheOutput += stats.cacheOutput;
     grandTotal += stats.total;
+    totalCost = mergeUsageCosts(totalCost, stats.cost);
   }
 
   const models: ModelTableEntry[] = [];
@@ -79,6 +86,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
       },
       total: stats.total,
       share,
+      ...(stats.cost ? { cost: stats.cost } : {}),
     });
   }
 
@@ -91,6 +99,7 @@ export function aggregateModelsTable(daily: DailyUsage[]): ModelTableSummary {
     totalCacheInput,
     totalCacheOutput,
     grandTotal,
+    ...(totalCost ? { totalCost } : {}),
   };
 }
 
@@ -142,6 +151,7 @@ export interface DrawModelsTableCardOptions {
   accentColor: string;
   fontFamily: string;
   providerTitle: string;
+  showCost?: boolean;
 }
 
 const CARD_PADDING_X = 16;
@@ -234,6 +244,7 @@ export function drawModelsTableCard(
     accentColor,
     fontFamily,
     providerTitle,
+    showCost = false,
   } = options;
 
   const summary = aggregateModelsTable(daily);
@@ -355,7 +366,8 @@ export function drawModelsTableCard(
   const leftX = x + CARD_PADDING_X;
   const tableRightX = x + width - CARD_PADDING_X;
   const shareX = tableRightX;
-  const totalX = tableRightX - 100;
+  const costX = tableRightX - 100;
+  const totalX = showCost ? costX - 82 : costX;
   const cacheX = totalX - 90;
   const outputX = cacheX - 85;
   const inputX = outputX - 75;
@@ -378,8 +390,19 @@ export function drawModelsTableCard(
     .text({ ...headerProps, x: inputX, "text-anchor": "end" }, "INPUT")
     .text({ ...headerProps, x: outputX, "text-anchor": "end" }, "OUTPUT")
     .text({ ...headerProps, x: cacheX, "text-anchor": "end" }, "CACHE READ")
-    .text({ ...headerProps, x: totalX, "text-anchor": "end" }, "TOTAL")
-    .text({ ...headerProps, x: shareX, "text-anchor": "end" }, "SHARE");
+    .text({ ...headerProps, x: totalX, "text-anchor": "end" }, "TOTAL");
+
+  if (showCost) {
+    svg = svg.text(
+      { ...headerProps, x: costX, "text-anchor": "end" },
+      "COST",
+    );
+  }
+
+  svg = svg.text(
+    { ...headerProps, x: shareX, "text-anchor": "end" },
+    "SHARE",
+  );
 
   // Header bottom divider line
   svg = svg.line({
@@ -477,6 +500,21 @@ export function drawModelsTableCard(
       },
       formatCompactTokens(model.total),
     );
+
+    if (showCost) {
+      svg = svg.text(
+        {
+          x: costX,
+          y: rowMiddleY,
+          fill: textMuted,
+          "font-size": 11,
+          "text-anchor": "end",
+          "dominant-baseline": "central",
+          "font-family": fontFamily,
+        },
+        formatUsageCost(model.cost, true),
+      );
+    }
 
     // Mini share bar + percentage text
     const shareText = `${percentFormatter.format(model.share)}%`;
@@ -610,6 +648,22 @@ export function drawModelsTableCard(
     },
     formatCompactTokens(summary.grandTotal),
   );
+
+  if (showCost) {
+    svg = svg.text(
+      {
+        x: costX,
+        y: footerY,
+        fill: textPrimary,
+        "font-size": 11,
+        "font-weight": 700,
+        "text-anchor": "end",
+        "dominant-baseline": "central",
+        "font-family": fontFamily,
+      },
+      formatUsageCost(summary.totalCost, true),
+    );
+  }
 
   // Total share
   svg = svg.text(

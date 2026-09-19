@@ -1,12 +1,19 @@
 import svgBuilder, { type SVGBuilderInstance } from "svg-builder";
-import type { DailyUsage, Insights, ModelUsage } from "./interfaces";
+import type {
+  DailyUsage,
+  Insights,
+  ModelUsage,
+  PricingMetadata,
+  UsageCost,
+} from "./interfaces";
 import type { ProviderId } from "./lib/interfaces";
-import { formatLocalDate } from "./lib/utils";
+import { formatLocalDate, mergeUsageCosts } from "./lib/utils";
 import {
   aggregateModelsTable,
   drawModelsTableCard,
   getModelsCardHeight,
 } from "./models-card";
+import { formatUsageCost } from "./pricing";
 import { estimateTextWidth, wrapText } from "./text-layout";
 
 type HeatmapThemeId = ProviderId | "all";
@@ -55,6 +62,7 @@ interface DrawHeatmapSectionOptions {
   daily: DailyUsage[];
   insights?: Insights;
   titleCaption?: string;
+  showCost?: boolean;
   colors: HeatmapTheme["colors"];
   colorMode: ColorMode;
   palette: SurfacePalette;
@@ -65,6 +73,8 @@ interface RenderUsageHeatmapsSvgSection {
   insights?: Insights;
   title: string;
   titleCaption?: string;
+  pricing?: PricingMetadata;
+  showCost?: boolean;
   colors: HeatmapTheme["colors"];
 }
 
@@ -628,6 +638,7 @@ function getSectionLayout(
   weekCount: number,
   title: string,
   titleCaption?: string,
+  showCost = false,
 ) {
   const cellSize = 11;
   const gap = 2;
@@ -652,7 +663,9 @@ function getSectionLayout(
   const width = Math.max(minWidth, leftLabelWidth + gridWidth + rightPadding);
   const leftColumnX = 8;
   const rightEdge = width - 8;
-  const headerInputX = rightEdge - topMetricGap * 2;
+  const metricGap = showCost ? 100 : topMetricGap;
+  const headerInputX =
+    rightEdge - metricGap * (showCost ? 3 : 2);
   const inlineTitleMaxWidth = headerInputX - leftColumnX - 16;
   const titleOverflow =
     estimateTextWidth(title, titleFontSize) > inlineTitleMaxWidth;
@@ -711,6 +724,7 @@ function drawHeatmapSection(
     daily,
     insights,
     titleCaption,
+    showCost = false,
     colors,
     colorMode,
     palette,
@@ -725,6 +739,7 @@ function drawHeatmapSection(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalTokens = 0;
+  let totalCost: UsageCost | undefined;
   let firstActivityOnlyDate: string | null = null;
   let firstMeasuredDate: string | null = null;
 
@@ -747,13 +762,19 @@ function drawHeatmapSection(
     totalInputTokens += row.input;
     totalOutputTokens += row.output;
     totalTokens += row.total;
+    totalCost = mergeUsageCosts(totalCost, row.cost);
   }
 
-  const headerInputX = rightEdge - topMetricGap * 2;
-  const headerOutputX = rightEdge - topMetricGap;
+  const metricGap = showCost ? 100 : topMetricGap;
+  const headerInputX =
+    rightEdge - metricGap * (showCost ? 3 : 2);
+  const headerOutputX = rightEdge - metricGap * (showCost ? 2 : 1);
+  const headerTotalX = showCost ? rightEdge - metricGap : rightEdge;
+  const headerCostX = rightEdge;
   const totalTokensLabel = formatTokenTotal(totalTokens);
   const totalInputLabel = formatTokenTotal(totalInputTokens);
   const totalOutputLabel = formatTokenTotal(totalOutputTokens);
+  const totalCostLabel = formatUsageCost(totalCost, true);
   const longestStreak = insights?.streaks.longest ?? 0;
   const currentStreak = insights?.streaks.current ?? 0;
 
@@ -845,7 +866,7 @@ function drawHeatmapSection(
 
   svg = svg.text(
     {
-      x: rightEdge,
+      x: headerTotalX,
       y: y + layout.headerCaptionY,
       fill: palette.muted,
       "font-size": metricCaptionFontSize,
@@ -859,7 +880,7 @@ function drawHeatmapSection(
 
   svg = svg.text(
     {
-      x: rightEdge,
+      x: headerTotalX,
       y: y + layout.headerValueY,
       fill: palette.text,
       "font-size": metricValueFontSize,
@@ -870,6 +891,36 @@ function drawHeatmapSection(
     },
     totalTokensLabel,
   );
+
+  if (showCost) {
+    svg = svg.text(
+      {
+        x: headerCostX,
+        y: y + layout.headerCaptionY,
+        fill: palette.muted,
+        "font-size": metricCaptionFontSize,
+        "font-weight": 600,
+        "text-anchor": "end",
+        "dominant-baseline": "hanging",
+        "font-family": fontFamily,
+      },
+      caption("Estimated cost"),
+    );
+
+    svg = svg.text(
+      {
+        x: headerCostX,
+        y: y + layout.headerValueY,
+        fill: palette.text,
+        "font-size": metricValueFontSize,
+        "font-weight": 600,
+        "text-anchor": "end",
+        "dominant-baseline": "hanging",
+        "font-family": fontFamily,
+      },
+      totalCostLabel,
+    );
+  }
 
   for (let i = 0; i < 7; i += 1) {
     const dayY =
@@ -991,14 +1042,14 @@ function drawHeatmapSection(
     caption("More"),
   );
 
-  if (firstActivityOnlyDate && firstMeasuredDate) {
-    const noteX = x + layout.width / 2;
-    const noteY = y + layout.gridTop + 7 * layout.cellSize + 6 * layout.gap + 8;
+  let noteIndex = 0;
+  const noteX = x + layout.width / 2;
 
+  if (firstActivityOnlyDate && firstMeasuredDate) {
     svg = svg.text(
       {
         x: noteX,
-        y: noteY,
+        y: y + layout.noteY + noteIndex * 14,
         fill: palette.muted,
         "font-size": 10,
         "text-anchor": "middle",
@@ -1006,6 +1057,22 @@ function drawHeatmapSection(
         "font-family": fontFamily,
       },
       `Claude started logging full token telemetry on ${formatShortDate(firstMeasuredDate)}; earlier activity may be undercounted.`,
+    );
+    noteIndex += 1;
+  }
+
+  if (showCost && totalCost?.coverage === "partial") {
+    svg = svg.text(
+      {
+        x: noteX,
+        y: y + layout.noteY + noteIndex * 14,
+        fill: palette.muted,
+        "font-size": 10,
+        "text-anchor": "middle",
+        "dominant-baseline": "hanging",
+        "font-family": fontFamily,
+      },
+      "Some usage is unpriced; the cost total is partial.",
     );
   }
 
@@ -1136,6 +1203,7 @@ export function renderUsageHeatmapsSvg({
       grid.weeks.length,
       section.title,
       section.titleCaption,
+      section.showCost,
     );
 
     if (!includeModelsCard) {
@@ -1199,6 +1267,7 @@ export function renderUsageHeatmapsSvg({
       daily: section.daily,
       insights: section.insights,
       titleCaption: section.titleCaption,
+      showCost: section.showCost,
       colors: section.colors,
       colorMode,
       palette,
@@ -1217,6 +1286,7 @@ export function renderUsageHeatmapsSvg({
         accentColor,
         fontFamily,
         providerTitle: section.title,
+        showCost: section.showCost,
       });
     }
 

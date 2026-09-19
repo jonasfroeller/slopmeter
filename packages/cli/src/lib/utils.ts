@@ -1,7 +1,15 @@
 import { createReadStream, existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { DailyUsage, Insights, ModelUsage, UsageSummary } from "../interfaces";
+import type {
+  CostBasis,
+  DailyUsage,
+  Insights,
+  ModelUsage,
+  ReportedUsageCost,
+  UsageCost,
+  UsageSummary,
+} from "../interfaces";
 
 let envLoaded = false;
 
@@ -52,14 +60,10 @@ export interface DailyTokenTotals {
   output: number;
   cache: { input: number; output: number };
   total: number;
+  reportedCost?: ReportedUsageCost;
 }
 
-export interface ModelTokenTotals {
-  input: number;
-  output: number;
-  cache: { input: number; output: number };
-  total: number;
-}
+export type ModelTokenTotals = DailyTokenTotals;
 
 interface TokenTotals {
   tokens: DailyTokenTotals;
@@ -125,11 +129,97 @@ interface ParseJsonTextOptions {
 function cloneTokenTotals(
   totals: DailyTokenTotals | ModelTokenTotals,
 ): ModelTokenTotals {
-  return {
+  const clone: ModelTokenTotals = {
     input: totals.input,
     output: totals.output,
     cache: { input: totals.cache.input, output: totals.cache.output },
     total: totals.total,
+  };
+
+  if (totals.reportedCost) {
+    clone.reportedCost = cloneReportedCost(totals.reportedCost);
+  }
+
+  return clone;
+}
+
+function cloneReportedCost(
+  reportedCost: ReportedUsageCost,
+): ReportedUsageCost {
+  return {
+    amountUsd: reportedCost.amountUsd,
+    tokens: {
+      input: reportedCost.tokens.input,
+      output: reportedCost.tokens.output,
+      cache: {
+        input: reportedCost.tokens.cache.input,
+        output: reportedCost.tokens.cache.output,
+      },
+    },
+  };
+}
+
+function mergeReportedCost(
+  target: ReportedUsageCost | undefined,
+  source: ReportedUsageCost | undefined,
+) {
+  if (!source) {
+    return target;
+  }
+
+  if (!target) {
+    return cloneReportedCost(source);
+  }
+
+  target.amountUsd += source.amountUsd;
+  target.tokens.input += source.tokens.input;
+  target.tokens.output += source.tokens.output;
+  target.tokens.cache.input += source.tokens.cache.input;
+  target.tokens.cache.output += source.tokens.cache.output;
+
+  return target;
+}
+
+export function cloneUsageCost(cost: UsageCost): UsageCost {
+  return { ...cost };
+}
+
+export function mergeUsageCosts(
+  left: UsageCost | undefined,
+  right: UsageCost | undefined,
+): UsageCost | undefined {
+  if (!left) {
+    return right ? cloneUsageCost(right) : undefined;
+  }
+
+  if (!right) {
+    return cloneUsageCost(left);
+  }
+
+  const bases = new Set<CostBasis>([left.basis, right.basis]);
+  const basis: CostBasis =
+    bases.size === 1 ? [...bases][0]! : "mixed";
+  const pricedTokens = left.pricedTokens + right.pricedTokens;
+  const unpricedTokens = left.unpricedTokens + right.unpricedTokens;
+
+  return {
+    amount: left.amount + right.amount,
+    currency: left.currency,
+    basis,
+    coverage:
+      pricedTokens <= 0
+        ? "unknown"
+        : unpricedTokens > 0
+          ? "partial"
+          : "complete",
+    pricedTokens,
+    unpricedTokens,
+    // A merged amount is only "free" when every contributing amount is
+    // explicitly marked free. An omitted flag represents ordinary usage,
+    // so it must not inherit the flag from a free event row.
+    ...(left.isFree === true && right.isFree === true
+      ? { isFree: true }
+      : {}),
   };
 }
 
@@ -142,6 +232,10 @@ function mergeTokenTotals(
   target.cache.input += source.cache.input;
   target.cache.output += source.cache.output;
   target.total += source.total;
+  target.reportedCost = mergeReportedCost(
+    target.reportedCost,
+    source.reportedCost,
+  );
 }
 
 export function addModelTokenTotals(
@@ -255,6 +349,9 @@ export function totalsToRows(
         cache: { input: tokens.cache.input, output: tokens.cache.output },
         total: tokens.total,
         displayValue: displayValue > 0 ? displayValue : undefined,
+        ...(tokens.reportedCost
+          ? { reportedCost: cloneReportedCost(tokens.reportedCost) }
+          : {}),
         breakdown: [...models.entries()]
           .sort(([, a], [, b]) => b.total - a.total)
           .map(([name, t]) => ({
@@ -265,6 +362,9 @@ export function totalsToRows(
               cache: { input: t.cache.input, output: t.cache.output },
               total: t.total,
             },
+            ...(t.reportedCost
+              ? { reportedCost: cloneReportedCost(t.reportedCost) }
+              : {}),
           })),
       };
     });
@@ -711,6 +811,9 @@ export function getTopModel(
       cache: { input: bestTotals.cache.input, output: bestTotals.cache.output },
       total: bestTotals.total,
     },
+    ...(bestTotals.reportedCost
+      ? { reportedCost: cloneReportedCost(bestTotals.reportedCost) }
+      : {}),
   };
 }
 
@@ -835,6 +938,10 @@ export function mergeUsageSummaries(
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
   const displayValuesByDate = new Map<string, number>();
+  const dailyCosts = new Map<string, UsageCost>();
+  const modelCostsByDate = new Map<string, Map<string, UsageCost>>();
+  const modelCosts = new Map<string, UsageCost>();
+  const recentModelCosts = new Map<string, UsageCost>();
   const recentStart = getRecentWindowStart(end, 30);
 
   for (const summary of summaries) {
@@ -844,10 +951,19 @@ export function mergeUsageSummaries(
         output: row.output,
         cache: { input: row.cache.input, output: row.cache.output },
         total: row.total,
+        reportedCost: row.reportedCost,
       });
 
       const dateKey = formatLocalDate(row.date);
       const displayValue = row.displayValue ?? row.total;
+
+      if (row.cost) {
+        const mergedCost = mergeUsageCosts(dailyCosts.get(dateKey), row.cost);
+
+        if (mergedCost) {
+          dailyCosts.set(dateKey, mergedCost);
+        }
+      }
 
       if (displayValue > 0) {
         displayValuesByDate.set(
@@ -860,26 +976,67 @@ export function mergeUsageSummaries(
 
       if (totalsForDate) {
         for (const breakdown of row.breakdown) {
+          const breakdownTotals = {
+            ...breakdown.tokens,
+            ...(breakdown.reportedCost
+              ? { reportedCost: breakdown.reportedCost }
+              : {}),
+          };
+
           addModelTokenTotals(
             totalsForDate.models,
             breakdown.name,
-            breakdown.tokens,
+            breakdownTotals,
           );
-          addModelTokenTotals(modelTotals, breakdown.name, breakdown.tokens);
+          addModelTokenTotals(modelTotals, breakdown.name, breakdownTotals);
 
           if (row.date >= recentStart) {
             addModelTokenTotals(
               recentModelTotals,
               breakdown.name,
-              breakdown.tokens,
+              breakdownTotals,
             );
+          }
+
+          if (breakdown.cost) {
+            const costsForDate =
+              modelCostsByDate.get(dateKey) ?? new Map<string, UsageCost>();
+            const mergedDateCost = mergeUsageCosts(
+              costsForDate.get(breakdown.name),
+              breakdown.cost,
+            );
+
+            if (mergedDateCost) {
+              costsForDate.set(breakdown.name, mergedDateCost);
+              modelCostsByDate.set(dateKey, costsForDate);
+            }
+
+            const mergedModelCost = mergeUsageCosts(
+              modelCosts.get(breakdown.name),
+              breakdown.cost,
+            );
+
+            if (mergedModelCost) {
+              modelCosts.set(breakdown.name, mergedModelCost);
+            }
+
+            if (row.date >= recentStart) {
+              const mergedRecentCost = mergeUsageCosts(
+                recentModelCosts.get(breakdown.name),
+                breakdown.cost,
+              );
+
+              if (mergedRecentCost) {
+                recentModelCosts.set(breakdown.name, mergedRecentCost);
+              }
+            }
           }
         }
       }
     }
   }
 
-  return createUsageSummary(
+  const merged = createUsageSummary(
     provider,
     totals,
     modelTotals,
@@ -887,4 +1044,57 @@ export function mergeUsageSummaries(
     end,
     displayValuesByDate,
   );
+
+  const daily = merged.daily.map((row) => {
+    const dateKey = formatLocalDate(row.date);
+    const costsForDate = modelCostsByDate.get(dateKey);
+
+    return {
+      ...row,
+      ...(dailyCosts.has(dateKey)
+        ? { cost: dailyCosts.get(dateKey) }
+        : {}),
+      breakdown: row.breakdown.map((breakdown) => ({
+        ...breakdown,
+        ...(costsForDate?.has(breakdown.name)
+          ? { cost: costsForDate.get(breakdown.name) }
+          : {}),
+      })),
+    };
+  });
+
+  const attachInsightCost = (
+    model: ModelUsage | undefined,
+    costs: Map<string, UsageCost>,
+  ) => {
+    if (!model) {
+      return undefined;
+    }
+
+    const cost = costs.get(model.name);
+
+    return {
+      ...model,
+      ...(cost ? { cost } : {}),
+    };
+  };
+
+  return {
+    ...merged,
+    pricing: summaries.find((summary) => summary.pricing)?.pricing,
+    daily,
+    insights: merged.insights
+      ? {
+          ...merged.insights,
+          mostUsedModel: attachInsightCost(
+            merged.insights.mostUsedModel,
+            modelCosts,
+          ),
+          recentMostUsedModel: attachInsightCost(
+            merged.insights.recentMostUsedModel,
+            recentModelCosts,
+          ),
+        }
+      : merged.insights,
+  };
 }

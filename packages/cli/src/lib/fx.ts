@@ -199,16 +199,31 @@ export function parseFxTimestamp(value: unknown): Date | null {
 export function createFxTokenTotals(fact: FxGenerationFact): DailyTokenTotals {
   const input = asNonNegativeNumber(fact.input_tokens);
   const output = asNonNegativeNumber(fact.output_tokens);
-
-  return {
+  const cacheInput = asNonNegativeNumber(fact.cache_read_tokens);
+  const cacheOutput = asNonNegativeNumber(fact.cache_write_tokens);
+  const reportedCostUsd = asNonNegativeNumber(fact.total_cost);
+  const tokenTotals: DailyTokenTotals = {
     input,
     output,
     cache: {
-      input: asNonNegativeNumber(fact.cache_read_tokens),
-      output: asNonNegativeNumber(fact.cache_write_tokens),
+      input: cacheInput,
+      output: cacheOutput,
     },
     total: input + output,
   };
+
+  if (reportedCostUsd > 0) {
+    tokenTotals.reportedCost = {
+      amountUsd: reportedCostUsd,
+      tokens: {
+        input,
+        output,
+        cache: { input: cacheInput, output: cacheOutput },
+      },
+    };
+  }
+
+  return tokenTotals;
 }
 
 async function readNativeFxUsage(): Promise<string | null> {

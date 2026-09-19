@@ -58,6 +58,12 @@ slopmeter --all
 # Sort provider sections alphabetically (tokens descending is the default)
 slopmeter --sort name --order asc
 
+# Display estimated costs in a chosen currency, with optional custom rates
+slopmeter --currency EUR --pricing ./pricing.json --format svg
+
+# Include the detailed model breakdown card
+slopmeter --models --format svg
+
 # Provider filters (optional)
 slopmeter --claude
 slopmeter --cline
@@ -87,6 +93,7 @@ slopmeter --warp
   - `INPUT TOKENS`
   - `OUTPUT TOKENS`
   - `TOTAL TOKENS` (includes cache tokens)
+  - `ESTIMATED COST` (shown when at least one usage record is priced)
 - Bottom metrics per provider:
   - `MOST USED MODEL` (with total tokens)
   - `RECENT USE (LAST 30 DAYS)` (with total tokens)
@@ -103,13 +110,39 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - If `--format` is omitted, format is inferred from `--output` extension (`.png`, `.svg`, or `.json`).
 - If neither provides a format, PNG is used.
 
+## Pricing
+
+The CLI bundles reproducible USD model rates and an FX snapshot. It prices uncached input, uncached output, cache reads, and cache writes per million tokens; the existing input/output totals still include cache components, which are subtracted before pricing so they are not charged twice.
+
+`--currency auto` (the default) infers currency from the runtime locale region and falls back to USD. Time zone is not used as a currency signal. Runtime network access is not required. Use `--pricing` to override or extend rates and FX data:
+
+```json
+{
+  "baseCurrency": "USD",
+  "fx": { "asOf": "2026-09-19", "rates": { "EUR": 0.85 } },
+  "rules": [
+    {
+      "provider": "codex",
+      "model": "my-model*",
+      "inputPerMillion": 1,
+      "outputPerMillion": 4,
+      "cacheReadPerMillion": 0.1,
+      "cacheWritePerMillion": 1.25
+    }
+  ]
+}
+```
+
+Custom exact matches take precedence over custom patterns, followed by bundled rules. The bundled catalog contains first-party standard API rates only; Batch, priority, flex, marketplace, and subscription-credit rates are not used. Unknown models remain unpriced. Provider-reported FX and Grok costs take precedence over estimates. Free-tier/event labels and local Ollama usage are valued with a matching API-equivalent model rate when one is available; the image shows those rows as `Free (€…)` while still counting the estimate in the total. Local models without a matching rate remain `Free`, and other unpriced model rows show `—`. Partial totals are labeled in image output. If no usage has a reported cost, matching rate, or free-local rule, the token-only image is unchanged.
+
 ## JSON export
 
 - Use `--format json` (or an `.json` output filename) to export data for interactive rendering.
-- Export includes fixed `version: "2026-03-03"`.
+- Export includes fixed `version: "2026-09-19"` and top-level pricing metadata.
 - Each provider includes:
   - `title` and `colors`
   - `daily` rows with `date`, `input`, `output`, `cache`, `total`
+  - optional daily and model `cost` objects with `amount`, `currency`, `basis`, `coverage`, `pricedTokens`, `unpricedTokens`, and `isFree`; free usage with a matching rate is included in aggregates as an API-equivalent estimate
   - `daily[].breakdown` per-model usage for that day, sorted by `tokens.total` (includes `input` and `output`)
   - `insights` (`mostUsedModel`, `recentMostUsedModel`) when available
 
