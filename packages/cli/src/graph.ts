@@ -275,6 +275,25 @@ export const heatmapThemes: Record<HeatmapThemeId, HeatmapTheme> = {
       ],
     },
   },
+  kilo: {
+    title: "Kilo Code",
+    colors: {
+      light: [
+        "#fffbeb", // amber-50
+        "#fde68a", // amber-200
+        "#fbbf24", // amber-400
+        "#d97706", // amber-600
+        "#92400e", // amber-800
+      ],
+      dark: [
+        "#451a03", // amber-950
+        "#78350f", // amber-900
+        "#b45309", // amber-700
+        "#fbbf24", // amber-400
+        "#fde68a", // amber-200
+      ],
+    },
+  },
   opencode: {
     title: "Open Code",
     colors: {

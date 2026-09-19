@@ -9,6 +9,7 @@ import { isCursorAvailable, loadCursorRows } from "./lib/cursor";
 import { isFreebuffAvailable, loadFreebuffRows } from "./lib/freebuff";
 import { isFxAvailable, loadFxRows } from "./lib/fx";
 import { isGeminiAvailable, loadGeminiRows } from "./lib/gemini";
+import { isKiloAvailable, loadKiloRows } from "./lib/kilo";
 import {
   defaultProviderIds,
   providerIds,
@@ -53,6 +54,7 @@ function createEmptyProviderAvailability(): ProviderAvailability {
     freebuff: false,
     gemini: false,
     grok: false,
+    kilo: false,
     opencode: false,
     ollama: false,
     pi: false,
@@ -87,6 +89,8 @@ export async function isProviderAvailable(provider: ProviderId): Promise<boolean
       return isGeminiAvailable();
     case "grok":
       return isGrokAvailable();
+    case "kilo":
+      return isKiloAvailable();
     case "opencode":
       return isOpenCodeAvailable();
     case "ollama":
@@ -156,6 +160,7 @@ export async function aggregateUsage({
     freebuff: null,
     gemini: null,
     grok: null,
+    kilo: null,
     opencode: null,
     ollama: null,
     pi: null,
@@ -202,6 +207,9 @@ export async function aggregateUsage({
         break;
       case "grok":
         summary = await loadGrokRows(start, end);
+        break;
+      case "kilo":
+        summary = await loadKiloRows(start, end);
         break;
       case "opencode":
         summary = await loadOpenCodeRows(start, end);

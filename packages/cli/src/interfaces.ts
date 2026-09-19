@@ -9,6 +9,7 @@ export type UsageProviderId =
   | "fx"
   | "freebuff"
   | "gemini"
+  | "kilo"
   | "opencode"
   | "ollama"
   | "pi"

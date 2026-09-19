@@ -1,7 +1,7 @@
 {
   "name": "slopmeter",
   "version": "0.5.1",
-  "description": "CLI for generating yearly usage heatmaps for Antigravity, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf.",
+  "description": "CLI for generating yearly usage heatmaps for Antigravity, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Kilo Code, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -30,6 +30,7 @@
     "freebuff",
     "gemini-cli",
     "grok",
+    "kilo-code",
     "opencode",
     "ollama",
     "pi-coding-agent",

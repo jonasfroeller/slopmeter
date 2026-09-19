@@ -14,6 +14,7 @@ export interface ProviderSelectionValues {
   fx?: boolean;
   freebuff: boolean;
   gemini: boolean;
+  kilo: boolean;
   opencode: boolean;
   ollama: boolean;
   pi: boolean;
@@ -35,6 +36,7 @@ const outputProviderIds: ProviderId[] = [
   "fx",
   "freebuff",
   "gemini",
+  "kilo",
   "opencode",
   "ollama",
   "pi",

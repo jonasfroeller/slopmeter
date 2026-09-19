@@ -1,6 +1,6 @@
 # slopmeter
 
-CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf for the rolling past year (ending today).
+CLI tool that generates usage heatmaps for Antigravity, Amp, Claude Code, Cline, Codex, Continue, Cursor, Vercel FX, Freebuff, Gemini CLI, Grok, Kilo Code, Open Code, Ollama, Pi Coding Agent, Roo Code, Trae, Warp, and Windsurf for the rolling past year (ending today).
 
 ## Monorepo layout
 
@@ -66,6 +66,7 @@ slopmeter --freebuff
 slopmeter --antigravity
 slopmeter --gemini
 slopmeter --grok
+slopmeter --kilo
 slopmeter --opencode
 slopmeter --ollama
 slopmeter --pi
@@ -120,6 +121,7 @@ Model names are normalized to remove a trailing date suffix like `-20251101`.
 - Continue usage is derived from `promptTokens` and `generatedTokens` records in `~/.continue/dev_data/**/tokensGenerated.jsonl`; records without timestamps use the source file's modification date.
 - Vercel FX usage is derived from local generation facts in `~/.fx/usage.jsonl`. On Windows, Slopmeter also scans every registered WSL2 distribution for its own `~/.fx/usage.jsonl`.
 - Ollama usage is derived from successful `/api/chat` and `/api/generate` inference timings in rotated local `server*.log` files. Prompt-evaluation tokens are counted as input and generated tokens as output; model names come from Ollama's local template-selection log entries.
+- Kilo Code usage is derived from `api_req_started` records in local Kilo VS Code task `ui_messages.json` files.
 - Warp usage is derived from aggregate `warp_tokens` and `byok_tokens` entries in the local Warp `agent_conversations` SQLite table. Warp does not persist an input/output split, so the aggregate is kept as the total and input-compatible usage count.
 - If provider flags are passed, `slopmeter` only loads those providers and only prints availability for those providers.
 - If no provider flags are passed, the CLI loads all providers and prints availability for all providers.
@@ -145,6 +147,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.
 - `CONTINUE_CONFIG_DIR`: override the Continue configuration root used for token telemetry discovery. Defaults to `~/.continue`.
 - `CLINE_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Cline task discovery. Defaults to Code, Code Insiders, and VSCodium user-data roots.
+- `KILO_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Kilo Code task discovery. Defaults to Code, Code Insiders, and VSCodium user-data roots.
 - `ROO_CONFIG_DIR`: override one or more comma-separated VS Code `User` data directories used for Roo Code task discovery. Defaults to Code, Code Insiders, VSCodium, and PearAI user-data roots.
 - `OLLAMA_LOG_DIR`: override the Ollama log directory or a specific `server*.log` file. Defaults to the native Ollama log directory for the current platform.
 - `FX_HOME`: override the native FX state directory. When unset on Windows, all registered WSL2 distributions are scanned automatically.
@@ -183,6 +186,7 @@ Environment variables can be exported in your shell or defined in a local `.env`
 - Claude Code: `$CLAUDE_CONFIG_DIR/*/projects` (comma-separated dirs) or defaults `~/.config/claude/projects` and `~/.claude/projects`
 - Cline: `$CLINE_CONFIG_DIR/globalStorage/saoudrizwan.claude-dev/tasks/**/ui_messages.json`, or the VS Code `User` global-storage roots for Code, Code Insiders, and VSCodium
 - Roo Code/PearAI: `$ROO_CONFIG_DIR/globalStorage/rooveterinaryinc.roo-cline/tasks/**/ui_messages.json` or `pearai.pearai-roo-cline`, plus the default VS Code and PearAI `User` global-storage roots
+- Kilo Code: `$KILO_CONFIG_DIR/globalStorage/kilocode.kilo-code/tasks/**/ui_messages.json`, or the default VS Code `User` global-storage roots
 - Codex: `$CODEX_HOME/sessions` or `~/.codex/sessions`
 - Antigravity: discovers local Antigravity language server metadata from `%APPDATA%/Antigravity/logs/**/Antigravity.log` (Windows), `~/Library/Application Support/Antigravity/logs/**/Antigravity.log` (macOS), or `~/.config/Antigravity/logs/**/Antigravity.log` (Linux), then reads usage from local LS protobuf RPC endpoints
 - Freebuff: `~/.config/manicode/projects/**/chats/**/chat-messages.json`, plus `manicode-dev` and `manicode-staging`; when those files are absent, the running Desktop orchestrator's local `/api/projects` and `/api/thread/:id` endpoints are used; override file roots with `FREEBUFF_CONFIG_DIR` or `FREEBUFF_DATA_DIR`, and the API with `FREEBUFF_API_URL`

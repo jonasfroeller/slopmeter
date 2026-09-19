@@ -16,6 +16,7 @@ function createValues(overrides?: Partial<{
   cursor: boolean;
   freebuff: boolean;
   gemini: boolean;
+  kilo: boolean;
   opencode: boolean;
   ollama: boolean;
   pi: boolean;
@@ -34,6 +35,7 @@ function createValues(overrides?: Partial<{
     cursor: false,
     freebuff: false,
     gemini: false,
+    kilo: false,
     opencode: false,
     ollama: false,
     pi: false,
@@ -132,5 +134,12 @@ test("default output path adds _freebuff with timestamp", () => {
   assert.equal(
     getDefaultOutputPath(createValues({ freebuff: true }), "png", fixedDate),
     "./heatmap-last-year_freebuff_2026-09-15_14-30-45.png",
+  );
+});
+
+test("default output path adds _kilo with timestamp", () => {
+  assert.equal(
+    getDefaultOutputPath(createValues({ kilo: true }), "png", fixedDate),
+    "./heatmap-last-year_kilo_2026-09-15_14-30-45.png",
   );
 });
