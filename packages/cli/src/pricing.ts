@@ -172,36 +172,78 @@ export const BUILT_IN_RULES: PricingRule[] = [
     },
   ),
   officialRule(
-    "OpenAI standard API pricing",
-    "https://developers.openai.com/api/docs/models/compare",
+    "OpenAI GPT-5.6 Sol launch API pricing",
+    "https://openai.com/index/gpt-5-6/",
+    {
+      model: "gpt-5.6-sol*",
+      inputPerMillion: 5,
+      outputPerMillion: 30,
+      cacheReadPerMillion: 0.5,
+      cacheWritePerMillion: 6.25,
+      effectiveFrom: "2026-07-09",
+      effectiveTo: "2026-08-20",
+    },
+  ),
+  officialRule(
+    "OpenAI GPT-5.6 Sol promotional API pricing",
+    "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
     {
       model: "gpt-5.6-sol*",
       inputPerMillion: 4,
       outputPerMillion: 20,
       cacheReadPerMillion: 0.4,
       cacheWritePerMillion: 5,
+      effectiveFrom: "2026-08-21",
     },
   ),
   officialRule(
-    "OpenAI standard API pricing",
-    "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+    "OpenAI GPT-5.6 Terra launch API pricing",
+    "https://openai.com/index/gpt-5-6/",
+    {
+      model: "gpt-5.6-terra*",
+      inputPerMillion: 2.5,
+      outputPerMillion: 15,
+      cacheReadPerMillion: 0.25,
+      cacheWritePerMillion: 3.125,
+      effectiveFrom: "2026-07-09",
+      effectiveTo: "2026-07-29",
+    },
+  ),
+  officialRule(
+    "OpenAI GPT-5.6 Terra reduced API pricing",
+    "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
     {
       model: "gpt-5.6-terra*",
       inputPerMillion: 2,
       outputPerMillion: 12,
       cacheReadPerMillion: 0.2,
       cacheWritePerMillion: 2.5,
+      effectiveFrom: "2026-07-30",
     },
   ),
   officialRule(
-    "OpenAI standard API pricing",
-    "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+    "OpenAI GPT-5.6 Luna launch API pricing",
+    "https://openai.com/index/gpt-5-6/",
+    {
+      model: "gpt-5.6-luna*",
+      inputPerMillion: 1,
+      outputPerMillion: 6,
+      cacheReadPerMillion: 0.1,
+      cacheWritePerMillion: 1.25,
+      effectiveFrom: "2026-07-09",
+      effectiveTo: "2026-07-29",
+    },
+  ),
+  officialRule(
+    "OpenAI GPT-5.6 Luna reduced API pricing",
+    "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
     {
       model: "gpt-5.6-luna*",
       inputPerMillion: 0.2,
       outputPerMillion: 1.2,
       cacheReadPerMillion: 0.02,
       cacheWritePerMillion: 0.25,
+      effectiveFrom: "2026-07-30",
     },
   ),
   officialRule(
@@ -551,6 +593,12 @@ export const BUILT_IN_RULES: PricingRule[] = [
           outputPerMillion: 3.75,
           cacheReadPerMillion: 0.075,
           cacheWritePerMillion: null,
+          effectiveFrom:
+            version === "3.8"
+              ? "2026-09-02"
+              : version === "3.7"
+                ? "2026-08-13"
+                : "2026-07-21",
           effectiveTo: "2026-12-31",
         },
       ),
@@ -577,6 +625,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 2.5,
       cacheReadPerMillion: 0.03,
       cacheWritePerMillion: null,
+      effectiveFrom: "2026-07-21",
     },
   ),
   officialRule(
@@ -588,6 +637,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 9,
       cacheReadPerMillion: 0.15,
       cacheWritePerMillion: null,
+      effectiveFrom: "2026-07-21",
     },
   ),
   officialRule(
@@ -752,18 +802,19 @@ export const BUILT_IN_RULES: PricingRule[] = [
   // published peak rate because local records do not include the UTC billing
   // window needed to select the cheaper off-peak tier.
   officialRule(
-    "DeepSeek standard peak API pricing",
-    "https://api-docs.deepseek.com/quick_start/pricing/",
+    "DeepSeek V4.1 Flash standard peak API pricing",
+    "https://api-docs.deepseek.com/news/news260910/",
     {
       model: "deepseek-v4-flash*",
       inputPerMillion: 0.3,
       outputPerMillion: 1.2,
       cacheReadPerMillion: 0.006,
       cacheWritePerMillion: null,
+      effectiveFrom: "2026-09-10",
     },
   ),
   officialRule(
-    "DeepSeek standard peak API pricing before V4.1 Flash routing",
+    "DeepSeek V4 Pro standard peak API pricing after V4 GA",
     "https://api-docs.deepseek.com/quick_start/pricing/",
     {
       model: "deepseek-v4-pro",
@@ -771,6 +822,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 3.96,
       cacheReadPerMillion: 0.044,
       cacheWritePerMillion: null,
+      effectiveFrom: "2026-08-16",
       effectiveTo: "2026-09-13",
     },
   ),
@@ -798,6 +850,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 0.87,
       cacheReadPerMillion: 0.0036,
       cacheWritePerMillion: 0,
+      effectiveFrom: "2026-05-27",
     },
   ),
   officialRule(
@@ -809,6 +862,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 0.28,
       cacheReadPerMillion: 0.0028,
       cacheWritePerMillion: 0,
+      effectiveFrom: "2026-05-27",
     },
   ),
 

@@ -492,7 +492,7 @@ test("bundled rules only carry first-party source URLs", () => {
 
     assert.match(
       rule.sourceUrl ?? "",
-      /^https:\/\/(?:developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io)\//,
+      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io)\//,
       rule.model,
     );
     assert.doesNotMatch(
@@ -582,4 +582,171 @@ test("verified standard rates and effective dates are used", () => {
 
   assert.equal(beforeRoutingChange.daily[0]?.cost?.amount, 5.28);
   assert.equal(afterRoutingChange.daily[0]?.cost?.amount, 1.5);
+});
+
+test("provider pricing begins only when the official dated rate is available", () => {
+  const context = createPricingContext("USD");
+  const cases = [
+    [
+      "Gemini 3.8 Flash (High)",
+      "2026-09-01T12:00:00",
+      "2026-09-02T12:00:00",
+      4.5,
+    ],
+    [
+      "Gemini 3.7 Flash (High)",
+      "2026-08-12T12:00:00",
+      "2026-08-13T12:00:00",
+      4.5,
+    ],
+    [
+      "Gemini 3.6 Flash (High)",
+      "2026-07-20T12:00:00",
+      "2026-07-21T12:00:00",
+      4.5,
+    ],
+    [
+      "Gemini 3.5 Flash Lite",
+      "2026-07-20T12:00:00",
+      "2026-07-21T12:00:00",
+      2.8,
+    ],
+    ["deepseek-v4-flash", "2026-09-09T12:00:00", "2026-09-10T12:00:00", 1.5],
+    ["mimo-v2.5", "2026-05-26T12:00:00", "2026-05-27T12:00:00", 0.42],
+  ] as const;
+
+  for (const [model, beforeDate, afterDate, expectedAmount] of cases) {
+    const before = priceUsageSummary(
+      createSummary({
+        provider: "codex",
+        model,
+        date: beforeDate,
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+    assert.equal(before.daily[0]?.cost?.coverage, "unknown", `${model} before`);
+
+    const after = priceUsageSummary(
+      createSummary({
+        provider: "codex",
+        model,
+        date: afterDate,
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+    assert.ok(
+      Math.abs((after.daily[0]?.cost?.amount ?? 0) - expectedAmount) < 1e-12,
+      `${model} after`,
+    );
+  }
+
+  const deepSeekProBeforeChange = priceUsageSummary(
+    createSummary({
+      provider: "codex",
+      model: "deepseek-v4-pro",
+      date: "2026-08-15T12:00:00",
+      input: 1_000_000,
+      output: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(deepSeekProBeforeChange.daily[0]?.cost?.coverage, "unknown");
+});
+
+test("GPT-5.6 Sol uses the documented historical standard rates", () => {
+  const context = createPricingContext("USD");
+
+  const launchRate = priceUsageSummary(
+    createSummary({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      date: "2026-07-15T12:00:00",
+      input: 1_000_000,
+      output: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(launchRate.daily[0]?.cost?.amount, 35);
+
+  const launchCacheRead = priceUsageSummary(
+    createSummary({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      date: "2026-08-20T12:00:00",
+      input: 0,
+      output: 0,
+      cacheInput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(launchCacheRead.daily[0]?.cost?.amount, 0.5);
+
+  const launchCacheWrite = priceUsageSummary(
+    createSummary({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      date: "2026-08-20T12:00:00",
+      input: 0,
+      output: 0,
+      cacheOutput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(launchCacheWrite.daily[0]?.cost?.amount, 6.25);
+
+  const reducedRate = priceUsageSummary(
+    createSummary({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      date: "2026-08-21T12:00:00",
+      input: 1_000_000,
+      output: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(reducedRate.daily[0]?.cost?.amount, 24);
+});
+
+test("GPT-5.6 Terra and Luna use their documented launch and reduced rates", () => {
+  const context = createPricingContext("USD");
+  const cases = [
+    ["gpt-5.6-terra", 17.5, 14, "2026-07-15T12:00:00", "2026-07-30T12:00:00"],
+    ["gpt-5.6-luna", 7, 1.4, "2026-07-15T12:00:00", "2026-07-30T12:00:00"],
+  ] as const;
+
+  for (const [
+    model,
+    launchAmount,
+    reducedAmount,
+    launchDate,
+    reducedDate,
+  ] of cases) {
+    const launchRate = priceUsageSummary(
+      createSummary({
+        provider: "codex",
+        model,
+        date: launchDate,
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+    assert.equal(launchRate.daily[0]?.cost?.amount, launchAmount, model);
+
+    const reducedRate = priceUsageSummary(
+      createSummary({
+        provider: "codex",
+        model,
+        date: reducedDate,
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+    assert.equal(reducedRate.daily[0]?.cost?.amount, reducedAmount, model);
+  }
 });
