@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import Database from "better-sqlite3";
 import type { UsageSummary } from "../interfaces";
 import {
   DEFAULT_FILE_PROCESS_CONCURRENCY,
@@ -22,9 +23,10 @@ import {
   runWithConcurrency,
 } from "./utils";
 
-const FREEBUFF_CONFIG_DIR_ENV = "FREEBUFF_CONFIG_DIR";
-const FREEBUFF_DATA_DIR_ENV = "FREEBUFF_DATA_DIR";
-const FREEBUFF_API_URL_ENV = "FREEBUFF_API_URL";
+export const FREEBUFF_CONFIG_DIR_ENV = "FREEBUFF_CONFIG_DIR";
+export const FREEBUFF_DATA_DIR_ENV = "FREEBUFF_DATA_DIR";
+export const FREEBUFF_DATABASE_PATH_ENV = "FREEBUFF_DATABASE_PATH";
+export const FREEBUFF_API_URL_ENV = "FREEBUFF_API_URL";
 const DEFAULT_FREEBUFF_API_URL = "http://127.0.0.1:12382";
 const FREEBUFF_API_TIMEOUT_MS = 1_500;
 const MIXED_FREEBUFF_MODEL = "Mixed";
@@ -76,11 +78,34 @@ function asNonNegativeNumber(value: unknown): number {
 }
 
 function getDefaultFreebuffConfigDirs(): string[] {
-  const configRoot = join(homedir(), ".config");
+  const configRoots = new Set<string>();
+  const home = homedir();
 
-  return ["manicode", "manicode-dev", "manicode-staging"].map((suffix) =>
-    join(configRoot, suffix),
-  );
+  if (process.env.XDG_CONFIG_HOME?.trim()) {
+    configRoots.add(resolve(process.env.XDG_CONFIG_HOME.trim()));
+  }
+
+  configRoots.add(join(home, ".config"));
+
+  if (process.env.APPDATA?.trim()) {
+    configRoots.add(resolve(process.env.APPDATA.trim()));
+  }
+
+  const dirs: string[] = [];
+
+  for (const root of configRoots) {
+    for (const suffix of [
+      "freebuff-desktop",
+      "freebuff",
+      "manicode",
+      "manicode-dev",
+      "manicode-staging",
+    ]) {
+      dirs.push(join(root, suffix));
+    }
+  }
+
+  return [...new Set(dirs)];
 }
 
 function getFreebuffSupportRoots(): string[] {
@@ -247,7 +272,45 @@ async function getFreebuffMessageFiles(): Promise<string[]> {
   return [...new Set(files)].sort((left, right) => left.localeCompare(right));
 }
 
+export async function getFreebuffDatabaseFiles(): Promise<string[]> {
+  const configuredDatabase = process.env[FREEBUFF_DATABASE_PATH_ENV]?.trim();
+
+  if (configuredDatabase && existsSync(configuredDatabase)) {
+    return [resolve(configuredDatabase)];
+  }
+
+  const files: string[] = [];
+
+  for (const configDir of getFreebuffConfigDirs()) {
+    const projectsDir = join(configDir, "projects");
+
+    if (!existsSync(projectsDir)) {
+      continue;
+    }
+
+    const candidates = await listFilesRecursive(projectsDir, ".db");
+
+    files.push(
+      ...candidates.filter((filePath) => {
+        const name = basename(filePath);
+
+        return (
+          (name === "desktop-v2.db" || name === "desktop.db") &&
+          !name.endsWith("-shm") &&
+          !name.endsWith("-wal")
+        );
+      }),
+    );
+  }
+
+  return [...new Set(files)].sort((left, right) => left.localeCompare(right));
+}
+
 export async function isFreebuffAvailable(): Promise<boolean> {
+  if ((await getFreebuffDatabaseFiles()).length > 0) {
+    return true;
+  }
+
   if ((await getFreebuffMessageFiles()).length > 0) {
     return true;
   }
@@ -485,7 +548,10 @@ async function processFreebuffApiThread(
       continue;
     }
 
-    const date = parseFreebuffTimestamp(message.ts);
+    const date =
+      parseFreebuffTimestamp(message.ts) ??
+      parseFreebuffTimestamp(message.createdAt) ??
+      parseFreebuffTimestamp(message.created_at);
 
     if (!date || date < start || date > end) {
       continue;
@@ -563,10 +629,183 @@ async function processFreebuffFile(
   return { totals, modelTotals, recentModelTotals };
 }
 
+interface FreebuffDbThreadRow {
+  id: string;
+  model: string | null;
+}
+
+interface FreebuffDbMessageRow {
+  thread_id: string;
+  metrics_json: string | null;
+  ts: number | null;
+}
+
+interface FreebuffMetricsPayload {
+  usage?: {
+    inputTokens?: unknown;
+    outputTokens?: unknown;
+    cachedInputTokens?: unknown;
+    totalTokens?: unknown;
+    model?: unknown;
+  };
+}
+
+function isSqliteLockedError(error: unknown) {
+  return (
+    error instanceof Error &&
+    ("code" in error
+      ? error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED"
+      : /database is locked|sqlite_busy/i.test(error.message))
+  );
+}
+
+async function withDatabaseSnapshot<T>(
+  databasePath: string,
+  callback: (snapshotPath: string) => Promise<T>,
+): Promise<T> {
+  const snapshotDir = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-"));
+  const snapshotPath = join(snapshotDir, basename(databasePath));
+
+  await copyFile(databasePath, snapshotPath);
+
+  for (const suffix of ["-shm", "-wal"]) {
+    const companionPath = `${databasePath}${suffix}`;
+
+    if (existsSync(companionPath)) {
+      await copyFile(companionPath, `${snapshotPath}${suffix}`);
+    }
+  }
+
+  try {
+    return await callback(snapshotPath);
+  } finally {
+    await rm(snapshotDir, { recursive: true, force: true });
+  }
+}
+
+function queryFreebuffDatabase(databasePath: string): {
+  threads: Map<string, string>;
+  messages: FreebuffDbMessageRow[];
+} {
+  const database = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+
+  try {
+    const threads = new Map<string, string>();
+
+    try {
+      const threadRows = database
+        .prepare("SELECT id, model FROM threads")
+        .all() as FreebuffDbThreadRow[];
+
+      for (const row of threadRows) {
+        if (row.id && row.model) {
+          threads.set(row.id, row.model);
+        }
+      }
+    } catch {
+      // Threads table may be absent in alternate schemas
+    }
+
+    const messages = database
+      .prepare(
+        "SELECT thread_id, metrics_json, ts FROM messages WHERE role = 'assistant' AND metrics_json IS NOT NULL",
+      )
+      .all() as FreebuffDbMessageRow[];
+
+    return { threads, messages };
+  } finally {
+    database.close();
+  }
+}
+
+async function loadFreebuffDatabaseData(databasePath: string) {
+  try {
+    return queryFreebuffDatabase(databasePath);
+  } catch (error) {
+    if (isSqliteLockedError(error)) {
+      return withDatabaseSnapshot(databasePath, async (snapshotPath) =>
+        queryFreebuffDatabase(snapshotPath),
+      );
+    }
+
+    throw error;
+  }
+}
+
+async function processFreebuffDatabase(
+  databasePath: string,
+  start: Date,
+  end: Date,
+): Promise<{
+  totals: DailyTotalsByDate;
+  modelTotals: Map<string, ModelTokenTotals>;
+  recentModelTotals: Map<string, ModelTokenTotals>;
+}> {
+  const totals: DailyTotalsByDate = new Map();
+  const modelTotals = new Map<string, ModelTokenTotals>();
+  const recentModelTotals = new Map<string, ModelTokenTotals>();
+  const recentStart = getRecentWindowStart(end, 30);
+
+  let data: { threads: Map<string, string>; messages: FreebuffDbMessageRow[] };
+
+  try {
+    data = await loadFreebuffDatabaseData(databasePath);
+  } catch {
+    return { totals, modelTotals, recentModelTotals };
+  }
+
+  for (const row of data.messages) {
+    if (!row.metrics_json) {
+      continue;
+    }
+
+    const date = parseFreebuffTimestamp(row.ts);
+
+    if (!date || date < start || date > end) {
+      continue;
+    }
+
+    let metrics: FreebuffMetricsPayload | undefined;
+
+    try {
+      metrics = JSON.parse(row.metrics_json) as FreebuffMetricsPayload;
+    } catch {
+      continue;
+    }
+
+    const usage = asRecord(metrics.usage);
+
+    if (!usage) {
+      continue;
+    }
+
+    const modelName =
+      asString(usage.model) ??
+      data.threads.get(row.thread_id) ??
+      MIXED_FREEBUFF_MODEL;
+
+    addFreebuffTokenTotals(
+      totals,
+      modelTotals,
+      recentModelTotals,
+      date,
+      recentStart,
+      createFreebuffDesktopTokenTotals(usage),
+      modelName,
+    );
+  }
+
+  return { totals, modelTotals, recentModelTotals };
+}
+
 export async function loadFreebuffRows(
   start: Date,
   end: Date,
 ): Promise<UsageSummary> {
+  const databaseFiles = await getFreebuffDatabaseFiles();
   const files = await getFreebuffMessageFiles();
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
@@ -575,21 +814,44 @@ export async function loadFreebuffRows(
     FILE_PROCESS_CONCURRENCY_ENV,
     DEFAULT_FILE_PROCESS_CONCURRENCY,
   );
-  const results = new Array<Awaited<ReturnType<typeof processFreebuffFile>>>(
-    files.length,
-  );
 
-  await runWithConcurrency(files, fileConcurrency, async (file, index) => {
-    results[index] = await processFreebuffFile(file, start, end);
-  });
+  if (databaseFiles.length > 0) {
+    const dbResults = new Array<
+      Awaited<ReturnType<typeof processFreebuffDatabase>>
+    >(databaseFiles.length);
 
-  for (const result of results) {
-    mergeDailyTotalsByDate(totals, result.totals);
-    mergeModelTotals(modelTotals, result.modelTotals);
-    mergeModelTotals(recentModelTotals, result.recentModelTotals);
+    await runWithConcurrency(
+      databaseFiles,
+      fileConcurrency,
+      async (file, index) => {
+        dbResults[index] = await processFreebuffDatabase(file, start, end);
+      },
+    );
+
+    for (const result of dbResults) {
+      mergeDailyTotalsByDate(totals, result.totals);
+      mergeModelTotals(modelTotals, result.modelTotals);
+      mergeModelTotals(recentModelTotals, result.recentModelTotals);
+    }
   }
 
-  if (files.length === 0) {
+  if (files.length > 0) {
+    const results = new Array<Awaited<ReturnType<typeof processFreebuffFile>>>(
+      files.length,
+    );
+
+    await runWithConcurrency(files, fileConcurrency, async (file, index) => {
+      results[index] = await processFreebuffFile(file, start, end);
+    });
+
+    for (const result of results) {
+      mergeDailyTotalsByDate(totals, result.totals);
+      mergeModelTotals(modelTotals, result.modelTotals);
+      mergeModelTotals(recentModelTotals, result.recentModelTotals);
+    }
+  }
+
+  if (databaseFiles.length === 0 && files.length === 0) {
     const apiThreads = await getFreebuffApiThreads();
     const apiResults = new Array<
       Awaited<ReturnType<typeof processFreebuffApiThread>>

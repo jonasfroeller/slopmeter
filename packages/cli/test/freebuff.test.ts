@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import Database from "better-sqlite3";
 import {
   createFreebuffTokenTotals,
   createFreebuffDesktopTokenTotals,
@@ -362,3 +363,71 @@ test("--freebuff CLI renders a JSON export", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("loadFreebuffRows reads assistant usage from desktop-v2.db SQLite databases", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-db-test-"));
+  const projectDir = join(root, "projects", "demo-project");
+  const dbPath = join(projectDir, "desktop-v2.db");
+  const originalConfigDir = process.env.FREEBUFF_CONFIG_DIR;
+  const originalDataDir = process.env.FREEBUFF_DATA_DIR;
+  const timestamp = Date.parse("2026-02-18T10:12:13.000Z");
+
+  await mkdir(projectDir, { recursive: true });
+
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT);
+    CREATE TABLE messages (thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model) VALUES ('t1', 'thread-model');
+    INSERT INTO messages (thread_id, role, metrics_json, ts) VALUES
+      ('t1', 'user', '{"usage":{"inputTokens":999}}', ${timestamp}),
+      ('t1', 'assistant', '{"usage":{"inputTokens":100,"outputTokens":20,"cachedInputTokens":10,"totalTokens":120}}', ${timestamp}),
+      ('t1', 'assistant', '{"usage":{"inputTokens":30,"outputTokens":10,"cachedInputTokens":0,"totalTokens":40,"model":"message-model"}}', ${timestamp + 1000});
+  `);
+  db.close();
+
+  process.env.FREEBUFF_CONFIG_DIR = root;
+  delete process.env.FREEBUFF_DATA_DIR;
+
+  try {
+    assert.equal(await isFreebuffAvailable(), true);
+
+    const summary = await loadFreebuffRows(
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-03-01T00:00:00.000Z"),
+    );
+
+    assert.equal(summary.provider, "freebuff");
+    assert.equal(summary.daily.length, 1);
+
+    const day = summary.daily[0];
+    assert.equal(formatLocalDate(day.date), "2026-02-18");
+    assert.equal(day.input, 130);
+    assert.equal(day.output, 30);
+    assert.equal(day.cache.input, 10);
+    assert.equal(day.cache.output, 0);
+    assert.equal(day.total, 160);
+    assert.deepEqual(
+      day.breakdown.map((entry) => [entry.name, entry.tokens.total]),
+      [
+        ["thread-model", 120],
+        ["message-model", 40],
+      ],
+    );
+  } finally {
+    if (originalConfigDir !== undefined) {
+      process.env.FREEBUFF_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.FREEBUFF_CONFIG_DIR;
+    }
+
+    if (originalDataDir !== undefined) {
+      process.env.FREEBUFF_DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.FREEBUFF_DATA_DIR;
+    }
+
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
