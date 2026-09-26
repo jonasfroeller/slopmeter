@@ -492,7 +492,7 @@ test("bundled rules only carry first-party source URLs", () => {
 
     assert.match(
       rule.sourceUrl ?? "",
-      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io|open\.bigmodel\.cn|console\.upstage\.ai)\//,
+      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io|open\.bigmodel\.cn|console\.upstage\.ai|build\.nvidia\.com|cloud\.tencent\.com|ant-ling\.com)\//,
       rule.model,
     );
     assert.doesNotMatch(
@@ -506,12 +506,8 @@ test("bundled rules only carry first-party source URLs", () => {
 test("unverified publisher or marketplace aliases remain unknown", () => {
   const context = createPricingContext("USD");
   const models = [
-    "hy3-free",
-    "zai/glm-5.2",
-    "nemotron-3.5-lightning-free",
-    "nemotron-3-super-free",
+    "unverified-model-alias",
     "qwen3-vl:8b-instruct",
-    "Gemini-3-Pro-Preview",
   ];
 
   for (const model of models) {
@@ -539,6 +535,24 @@ test("verified standard rates and effective dates are used", () => {
     ["minimax-m2.5", "2026-09-15T12:00:00", 1.35],
     ["kimi-k2.7-code", "2026-09-15T12:00:00", 4.95],
     ["qwen3.8-max", "2026-09-15T12:00:00", 6.666666666666667],
+    ["gpt-5__max", "2026-09-15T12:00:00", 11.25],
+    ["Gemini-3-Pro-Preview", "2026-09-15T12:00:00", 14],
+    ["Gemini-3-Pro-Preview (200k)", "2026-09-15T12:00:00", 14],
+    ["kimi-k2.5-free", "2026-09-15T12:00:00", 3.6],
+    ["kimi-k2__max", "2026-09-15T12:00:00", 3.1],
+    ["glm-5.2", "2026-09-15T12:00:00", 5.8],
+    ["zai/glm-5.2", "2026-09-15T12:00:00", 5.8],
+    ["glm-5.1", "2026-09-15T12:00:00", 5.8],
+    ["glm-5-free", "2026-09-15T12:00:00", 5.8],
+    ["deepseek-v4-flash", "2026-09-15T12:00:00", 1.5],
+    ["gpt-6-sol", "2026-09-23T12:00:00", 12],
+    ["gpt-6-luna", "2026-09-23T12:00:00", 0.6],
+    ["nemotron-3.5-lightning-free", "2026-09-15T12:00:00", 0],
+    ["minimax-m2.1-free", "2026-09-15T12:00:00", 1.5],
+    ["gpt-5.3-codex-spark", "2026-09-15T12:00:00", 15.75],
+    ["hy3-free", "2026-09-15T12:00:00", 0.7],
+    ["ling-3.0-flash-fin-free", "2026-09-15T12:00:00", 0.24],
+    ["ling-3.0-flash", "2026-09-15T12:00:00", 0.084],
   ] as const;
 
   for (const [model, date, expected] of cases) {
@@ -611,7 +625,6 @@ test("provider pricing begins only when the official dated rate is available", (
       "2026-07-21T12:00:00",
       2.8,
     ],
-    ["deepseek-v4-flash", "2026-09-09T12:00:00", "2026-09-10T12:00:00", 1.5],
     ["mimo-v2.5", "2026-05-26T12:00:00", "2026-05-27T12:00:00", 0.42],
   ] as const;
 
@@ -654,7 +667,8 @@ test("provider pricing begins only when the official dated rate is available", (
     }),
     context,
   );
-  assert.equal(deepSeekProBeforeChange.daily[0]?.cost?.coverage, "unknown");
+  assert.equal(deepSeekProBeforeChange.daily[0]?.cost?.coverage, "complete");
+  assert.equal(deepSeekProBeforeChange.daily[0]?.cost?.amount, 5.28);
 });
 
 test("GPT-5.6 Sol uses the documented historical standard rates", () => {

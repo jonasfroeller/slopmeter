@@ -162,13 +162,35 @@ export const BUILT_IN_RULES: PricingRule[] = [
   // OpenAI standard API pricing.
   officialRule(
     "OpenAI standard API pricing",
-    "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+    "https://developers.openai.com/api/docs/models/gpt-6-sol",
     {
       model: "gpt-6-astra*",
       inputPerMillion: 10,
       outputPerMillion: 50,
       cacheReadPerMillion: 1,
       cacheWritePerMillion: 12.5,
+    },
+  ),
+  officialRule(
+    "OpenAI standard API pricing",
+    "https://developers.openai.com/api/docs/models/gpt-6-sol",
+    {
+      model: "gpt-6-sol*",
+      inputPerMillion: 2,
+      outputPerMillion: 10,
+      cacheReadPerMillion: 0.2,
+      cacheWritePerMillion: 2.5,
+    },
+  ),
+  officialRule(
+    "OpenAI standard API pricing",
+    "https://developers.openai.com/api/docs/models/gpt-6-sol",
+    {
+      model: "gpt-6-luna*",
+      inputPerMillion: 0.1,
+      outputPerMillion: 0.5,
+      cacheReadPerMillion: 0.01,
+      cacheWritePerMillion: null,
     },
   ),
   officialRule(
@@ -316,7 +338,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
     "OpenAI standard API pricing",
     "https://developers.openai.com/api/docs/models/gpt-5.3-codex",
     {
-      model: "gpt-5.3-codex",
+      model: "gpt-5.3-codex*",
       inputPerMillion: 1.75,
       outputPerMillion: 14,
       cacheReadPerMillion: 0.175,
@@ -378,7 +400,16 @@ export const BUILT_IN_RULES: PricingRule[] = [
       cacheWritePerMillion: null,
     },
   ),
-  ...["gpt-5", "gpt-5-high", "gpt-5-medium"].map((model) =>
+  ...[
+    "gpt-5",
+    "gpt-5-high",
+    "gpt-5-medium",
+    "gpt-5-low",
+    "gpt-5__max",
+    "gpt-5-max",
+    "*gpt-5*max*",
+    "*gpt-5__*",
+  ].map((model) =>
     officialRule(
       "OpenAI standard API pricing",
       "https://developers.openai.com/api/docs/models/gpt-5",
@@ -663,6 +694,17 @@ export const BUILT_IN_RULES: PricingRule[] = [
     },
   ),
   officialRule(
+    "Google Gemini standard API pricing (<=200K context tier)",
+    "https://ai.google.dev/gemini-api/docs/pricing",
+    {
+      model: "*gemini*3*pro*",
+      inputPerMillion: 2,
+      outputPerMillion: 12,
+      cacheReadPerMillion: 0.2,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
     "Google Gemini standard API pricing (display alias, <=200K context tier)",
     "https://ai.google.dev/gemini-api/docs/pricing",
     {
@@ -810,19 +852,17 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 1.2,
       cacheReadPerMillion: 0.006,
       cacheWritePerMillion: null,
-      effectiveFrom: "2026-09-10",
     },
   ),
   officialRule(
     "DeepSeek V4 Pro standard peak API pricing after V4 GA",
     "https://api-docs.deepseek.com/quick_start/pricing/",
     {
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-pro*",
       inputPerMillion: 1.32,
       outputPerMillion: 3.96,
       cacheReadPerMillion: 0.044,
       cacheWritePerMillion: null,
-      effectiveFrom: "2026-08-16",
       effectiveTo: "2026-09-13",
     },
   ),
@@ -830,7 +870,7 @@ export const BUILT_IN_RULES: PricingRule[] = [
     "DeepSeek standard peak API pricing after V4.1 Flash routing",
     "https://api-docs.deepseek.com/news/news260910/",
     {
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-pro*",
       inputPerMillion: 0.3,
       outputPerMillion: 1.2,
       cacheReadPerMillion: 0.006,
@@ -921,6 +961,28 @@ export const BUILT_IN_RULES: PricingRule[] = [
       inputPerMillion: 0.95,
       outputPerMillion: 4,
       cacheReadPerMillion: 0.16,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Moonshot international API pricing",
+    "https://platform.kimi.ai/",
+    {
+      model: "*kimi-k2.5*",
+      inputPerMillion: 0.6,
+      outputPerMillion: 3,
+      cacheReadPerMillion: 0.12,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Moonshot international API pricing",
+    "https://platform.kimi.ai/",
+    {
+      model: "*kimi-k2*",
+      inputPerMillion: 0.6,
+      outputPerMillion: 2.5,
+      cacheReadPerMillion: 0.12,
       cacheWritePerMillion: null,
     },
   ),
@@ -1024,6 +1086,17 @@ export const BUILT_IN_RULES: PricingRule[] = [
       cacheWritePerMillion: null,
     },
   ),
+  officialRule(
+    "MiniMax standard API pricing",
+    "https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise",
+    {
+      model: "*minimax-m2.1*",
+      inputPerMillion: 0.3,
+      outputPerMillion: 1.2,
+      cacheReadPerMillion: 0.06,
+      cacheWritePerMillion: null,
+    },
+  ),
 
   // Z.ai standard API pricing.
   officialRule(
@@ -1053,6 +1126,39 @@ export const BUILT_IN_RULES: PricingRule[] = [
     "https://open.bigmodel.cn/pricing",
     {
       model: "*glm-5.3*",
+      inputPerMillion: 1.4,
+      outputPerMillion: 4.4,
+      cacheReadPerMillion: 0.26,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5.2*",
+      inputPerMillion: 1.4,
+      outputPerMillion: 4.4,
+      cacheReadPerMillion: 0.26,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5.1*",
+      inputPerMillion: 1.4,
+      outputPerMillion: 4.4,
+      cacheReadPerMillion: 0.26,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5*",
       inputPerMillion: 1.4,
       outputPerMillion: 4.4,
       cacheReadPerMillion: 0.26,
@@ -1102,6 +1208,67 @@ export const BUILT_IN_RULES: PricingRule[] = [
       inputPerMillion: 0.05,
       outputPerMillion: 0.2,
       cacheReadPerMillion: 0.005,
+      cacheWritePerMillion: null,
+    },
+  ),
+
+  // NVIDIA Build free prototyping API pricing.
+  officialRule(
+    "NVIDIA Build API pricing",
+    "https://build.nvidia.com/",
+    {
+      model: "*nemotron*",
+      inputPerMillion: 0,
+      outputPerMillion: 0,
+      cacheReadPerMillion: 0,
+      cacheWritePerMillion: null,
+    },
+  ),
+
+  // Tencent Cloud Hunyuan standard API pricing.
+  officialRule(
+    "Tencent Cloud Hunyuan standard API pricing",
+    "https://cloud.tencent.com/",
+    {
+      model: "*hy3*",
+      inputPerMillion: 0.14,
+      outputPerMillion: 0.56,
+      cacheReadPerMillion: 0.033,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Tencent Cloud Hunyuan standard API pricing",
+    "https://cloud.tencent.com/",
+    {
+      model: "*hunyuan-3*",
+      inputPerMillion: 0.14,
+      outputPerMillion: 0.56,
+      cacheReadPerMillion: 0.033,
+      cacheWritePerMillion: null,
+    },
+  ),
+
+  // InclusionAI Ling standard API pricing.
+  officialRule(
+    "InclusionAI Ling standard API pricing",
+    "https://ant-ling.com/",
+    {
+      model: "*ling*fin*",
+      inputPerMillion: 0.06,
+      outputPerMillion: 0.18,
+      cacheReadPerMillion: 0.0042,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "InclusionAI Ling standard API pricing",
+    "https://ant-ling.com/",
+    {
+      model: "*ling*",
+      inputPerMillion: 0.021,
+      outputPerMillion: 0.063,
+      cacheReadPerMillion: 0.0042,
       cacheWritePerMillion: null,
     },
   ),
