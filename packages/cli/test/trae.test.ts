@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createCipheriv } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
-import { isTraeAvailable, loadTraeRows } from "../src/lib/trae";
+import {
+  FALLBACK_TRAE_SQLCIPHER_KEY,
+  isTraeAvailable,
+  loadTraeRows,
+  resolveTraeKey,
+} from "../src/lib/trae";
 import { formatLocalDate } from "../src/lib/utils";
 
 const execFileAsync = promisify(execFile);
@@ -340,6 +346,144 @@ test("loadTraeRows prioritizes prompt_tokens_total and completion_tokens_total f
     assert.equal(summary.daily[0]?.total, 15_000);
   } finally {
     delete process.env.TRAE_DATABASE_PATH;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+function createEncryptedSqlcipherPage(hexKey: string): Buffer {
+  const rawKey = Buffer.from(hexKey, "hex");
+  const iv = Buffer.alloc(16, 0x42);
+  const page = Buffer.alloc(4096);
+  page.fill(0x01, 0, 16);
+  const plaintext = Buffer.alloc(4000);
+  plaintext[0] = 0x10;
+  plaintext[1] = 0x00;
+  plaintext[4] = 80;
+  const cipher = createCipheriv("aes-256-cbc", rawKey, iv);
+  cipher.setAutoPadding(false);
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  encrypted.copy(page, 16);
+  iv.copy(page, 4016);
+  return page;
+}
+
+test("resolveTraeKey falls back to universal key when TRAE_SQLCIPHER_KEY is not set", () => {
+  const originalKey = process.env.TRAE_SQLCIPHER_KEY;
+
+  try {
+    delete process.env.TRAE_SQLCIPHER_KEY;
+    assert.equal(
+      FALLBACK_TRAE_SQLCIPHER_KEY,
+      "3605f6691095a993f03d5009c918352ef5be31ae31e8f000212b81ff058da773",
+    );
+    assert.equal(resolveTraeKey(), FALLBACK_TRAE_SQLCIPHER_KEY);
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.TRAE_SQLCIPHER_KEY = originalKey;
+    } else {
+      delete process.env.TRAE_SQLCIPHER_KEY;
+    }
+  }
+});
+
+test("resolveTraeKey prioritizes TRAE_SQLCIPHER_KEY env var over fallback", () => {
+  const originalKey = process.env.TRAE_SQLCIPHER_KEY;
+  const customKey =
+    "111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000";
+
+  try {
+    process.env.TRAE_SQLCIPHER_KEY = customKey;
+    assert.equal(resolveTraeKey(), customKey);
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.TRAE_SQLCIPHER_KEY = originalKey;
+    } else {
+      delete process.env.TRAE_SQLCIPHER_KEY;
+    }
+  }
+});
+
+test("resolveTraeKey verifies database against fallback universal key", async () => {
+  const originalKey = process.env.TRAE_SQLCIPHER_KEY;
+  const tempDir = await mkdtemp(join(tmpdir(), "slopmeter-trae-fallback-"));
+  const dbPath = join(tempDir, "database.db");
+
+  try {
+    delete process.env.TRAE_SQLCIPHER_KEY;
+    await writeFile(
+      dbPath,
+      createEncryptedSqlcipherPage(FALLBACK_TRAE_SQLCIPHER_KEY),
+    );
+
+    assert.equal(resolveTraeKey(dbPath), FALLBACK_TRAE_SQLCIPHER_KEY);
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.TRAE_SQLCIPHER_KEY = originalKey;
+    } else {
+      delete process.env.TRAE_SQLCIPHER_KEY;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("resolveTraeKey returns null when encrypted database does not match fallback key", async () => {
+  const originalKey = process.env.TRAE_SQLCIPHER_KEY;
+  const tempDir = await mkdtemp(join(tmpdir(), "slopmeter-trae-fallback-"));
+  const dbPath = join(tempDir, "database.db");
+  const otherKey =
+    "111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000";
+
+  try {
+    delete process.env.TRAE_SQLCIPHER_KEY;
+    await writeFile(dbPath, createEncryptedSqlcipherPage(otherKey));
+
+    assert.equal(resolveTraeKey(dbPath), null);
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.TRAE_SQLCIPHER_KEY = originalKey;
+    } else {
+      delete process.env.TRAE_SQLCIPHER_KEY;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("isTraeAvailable discovers database.db encrypted with fallback key without env var", async () => {
+  const originalKey = process.env.TRAE_SQLCIPHER_KEY;
+  const originalConfig = process.env.TRAE_CONFIG_DIR;
+  const originalDb = process.env.TRAE_DATABASE_PATH;
+  const tempDir = await mkdtemp(join(tmpdir(), "slopmeter-trae-discover-"));
+  const agentDir = join(tempDir, "ModularData", "ai-agent");
+  const dbPath = join(agentDir, "database.db");
+
+  try {
+    delete process.env.TRAE_SQLCIPHER_KEY;
+    delete process.env.TRAE_DATABASE_PATH;
+    process.env.TRAE_CONFIG_DIR = tempDir;
+
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      dbPath,
+      createEncryptedSqlcipherPage(FALLBACK_TRAE_SQLCIPHER_KEY),
+    );
+
+    assert.equal(isTraeAvailable(), true);
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.TRAE_SQLCIPHER_KEY = originalKey;
+    } else {
+      delete process.env.TRAE_SQLCIPHER_KEY;
+    }
+    if (originalConfig !== undefined) {
+      process.env.TRAE_CONFIG_DIR = originalConfig;
+    } else {
+      delete process.env.TRAE_CONFIG_DIR;
+    }
+    if (originalDb !== undefined) {
+      process.env.TRAE_DATABASE_PATH = originalDb;
+    } else {
+      delete process.env.TRAE_DATABASE_PATH;
+    }
     await rm(tempDir, { recursive: true, force: true });
   }
 });

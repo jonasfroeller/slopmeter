@@ -31,7 +31,10 @@ import {
 const TRAE_CONFIG_DIR_ENV = "TRAE_CONFIG_DIR";
 const TRAE_DATABASE_PATH_ENV = "TRAE_DATABASE_PATH";
 const TRAE_DB_PATH_ENV = "TRAE_DB_PATH";
-const TRAE_SQLCIPHER_KEY_ENV = "TRAE_SQLCIPHER_KEY";
+export const TRAE_SQLCIPHER_KEY_ENV = "TRAE_SQLCIPHER_KEY";
+export const FALLBACK_TRAE_SQLCIPHER_KEY =
+  "3605f6691095a993f03d5009c918352ef5be31ae31e8f000212b81ff058da773";
+export const DEFAULT_TRAE_SQLCIPHER_KEY = FALLBACK_TRAE_SQLCIPHER_KEY;
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "utf8");
 const SQLCIPHER_PAGE_SIZE = 4096;
@@ -196,24 +199,41 @@ function verifySqlcipherKey(filePath: string, rawKey: Buffer): boolean {
   }
 }
 
-function resolveTraeKey(databasePath?: string): string | null {
+function getCachedTraeKey(): string | undefined {
+  const cachePath = getTraeKeyCachePath();
+
+  if (!existsSync(cachePath)) {
+    return undefined;
+  }
+
+  try {
+    const cached = readFileSync(cachePath, "utf8").trim();
+
+    return cached.length === 64 ? cached : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveCachedTraeKey(key: string): void {
+  const cachePath = getTraeKeyCachePath();
+
+  try {
+    mkdirSync(dirname(cachePath), { recursive: true });
+    writeFileSync(cachePath, key, "utf8");
+  } catch {
+    // Ignore cache write failures
+  }
+}
+
+export function resolveTraeKey(databasePath?: string): string | null {
   loadEnv();
   const envKey = process.env[TRAE_SQLCIPHER_KEY_ENV]?.trim();
 
   if (envKey && envKey.length === 64) {
     if (databasePath && existsSync(databasePath)) {
-      const keyBuffer = Buffer.from(envKey, "hex");
-
-      if (verifySqlcipherKey(databasePath, keyBuffer)) {
-        const cachePath = getTraeKeyCachePath();
-
-        try {
-          mkdirSync(dirname(cachePath), { recursive: true });
-          writeFileSync(cachePath, envKey, "utf8");
-        } catch {
-          // Ignore cache write failures
-        }
-
+      if (verifySqlcipherKey(databasePath, Buffer.from(envKey, "hex"))) {
+        saveCachedTraeKey(envKey);
         return envKey;
       }
 
@@ -223,31 +243,25 @@ function resolveTraeKey(databasePath?: string): string | null {
     return envKey;
   }
 
-  const cachePath = getTraeKeyCachePath();
+  const fallbackCandidates: string[] = [];
+  const cachedKey = getCachedTraeKey();
 
-  if (existsSync(cachePath)) {
-    try {
-      const cached = readFileSync(cachePath, "utf8").trim();
+  if (cachedKey) {
+    fallbackCandidates.push(cachedKey);
+  }
+  fallbackCandidates.push(FALLBACK_TRAE_SQLCIPHER_KEY);
 
-      if (cached.length === 64) {
-        if (databasePath && existsSync(databasePath)) {
-          const cachedBuffer = Buffer.from(cached, "hex");
-
-          if (verifySqlcipherKey(databasePath, cachedBuffer)) {
-            return cached;
-          }
-
-          return null;
-        }
-
-        return cached;
+  if (databasePath && existsSync(databasePath)) {
+    for (const candidate of fallbackCandidates) {
+      if (verifySqlcipherKey(databasePath, Buffer.from(candidate, "hex"))) {
+        return candidate;
       }
-    } catch {
-      // Ignore cache read failures and proceed to verified discovery
     }
+
+    return null;
   }
 
-  return null;
+  return fallbackCandidates[0] ?? FALLBACK_TRAE_SQLCIPHER_KEY;
 }
 
 
