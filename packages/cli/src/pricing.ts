@@ -14,7 +14,7 @@ import type {
 import { cloneUsageCost, formatLocalDate, mergeUsageCosts } from "./lib/utils";
 
 export const PRICING_BASE_CURRENCY = "USD";
-export const PRICING_CATALOG_VERSION = "2026-09-19";
+export const PRICING_CATALOG_VERSION = "2026-09-26";
 export const BUILT_IN_FX_AS_OF = "2026-09-19";
 
 export interface PricingRule {
@@ -845,6 +845,30 @@ export const BUILT_IN_RULES: PricingRule[] = [
     "Xiaomi MiMo international API pricing",
     "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
     {
+      model: "*mimo-v2.6-pro*",
+      inputPerMillion: 0.435,
+      outputPerMillion: 0.87,
+      cacheReadPerMillion: 0.0036,
+      cacheWritePerMillion: 0,
+      effectiveFrom: "2026-08-01",
+    },
+  ),
+  officialRule(
+    "Xiaomi MiMo international API pricing",
+    "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    {
+      model: "*mimo-v2.6*",
+      inputPerMillion: 0.14,
+      outputPerMillion: 0.28,
+      cacheReadPerMillion: 0.0028,
+      cacheWritePerMillion: 0,
+      effectiveFrom: "2026-08-01",
+    },
+  ),
+  officialRule(
+    "Xiaomi MiMo international API pricing",
+    "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    {
       model: "*mimo-v2.5-pro*",
       inputPerMillion: 0.435,
       outputPerMillion: 0.87,
@@ -997,6 +1021,87 @@ export const BUILT_IN_RULES: PricingRule[] = [
       inputPerMillion: 0.15,
       outputPerMillion: 1.2,
       cacheReadPerMillion: null,
+      cacheWritePerMillion: null,
+    },
+  ),
+
+  // Z.ai standard API pricing.
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5.3-flash*",
+      inputPerMillion: 0.15,
+      outputPerMillion: 0.5,
+      cacheReadPerMillion: 0.03,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5.3-flashx*",
+      inputPerMillion: 0.37,
+      outputPerMillion: 1.25,
+      cacheReadPerMillion: 0.075,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Z.ai standard API pricing",
+    "https://open.bigmodel.cn/pricing",
+    {
+      model: "*glm-5.3*",
+      inputPerMillion: 1.4,
+      outputPerMillion: 4.4,
+      cacheReadPerMillion: 0.26,
+      cacheWritePerMillion: null,
+    },
+  ),
+
+  // Upstage standard API pricing.
+  officialRule(
+    "Upstage standard API pricing",
+    "https://console.upstage.ai/docs/pricing",
+    {
+      model: "*solar-pro4*",
+      inputPerMillion: 0.3,
+      outputPerMillion: 1.2,
+      cacheReadPerMillion: 0.06,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Upstage standard API pricing",
+    "https://console.upstage.ai/docs/pricing",
+    {
+      model: "*solar-pro*",
+      inputPerMillion: 0.3,
+      outputPerMillion: 1.2,
+      cacheReadPerMillion: 0.06,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Upstage standard API pricing",
+    "https://console.upstage.ai/docs/pricing",
+    {
+      model: "*solar-mini4*",
+      inputPerMillion: 0.05,
+      outputPerMillion: 0.2,
+      cacheReadPerMillion: 0.005,
+      cacheWritePerMillion: null,
+    },
+  ),
+  officialRule(
+    "Upstage standard API pricing",
+    "https://console.upstage.ai/docs/pricing",
+    {
+      model: "*solar-mini*",
+      inputPerMillion: 0.05,
+      outputPerMillion: 0.2,
+      cacheReadPerMillion: 0.005,
       cacheWritePerMillion: null,
     },
   ),
@@ -1313,6 +1418,26 @@ function matchesGlob(pattern: string, value: string) {
   return new RegExp(expression, "i").test(value);
 }
 
+function stripProviderPrefix(model: string): string {
+  const slashIndex = model.lastIndexOf("/");
+
+  if (slashIndex >= 0 && slashIndex < model.length - 1) {
+    return model.slice(slashIndex + 1);
+  }
+
+  return model;
+}
+
+function matchesRuleModel(pattern: string, model: string): boolean {
+  if (matchesGlob(pattern, model)) {
+    return true;
+  }
+
+  const stripped = stripProviderPrefix(model);
+
+  return stripped !== model && matchesGlob(pattern, stripped);
+}
+
 function selectRule(
   rules: LoadedRule[],
   provider: UsageProviderId,
@@ -1324,7 +1449,7 @@ function selectRule(
       (rule) =>
         isEffective(rule, date) &&
         (rule.provider === "*" || rule.provider.toLowerCase() === provider) &&
-        matchesGlob(rule.model, model),
+        matchesRuleModel(rule.model, model),
     )
     .filter((rule, _, matching) => {
       // Keep Ollama's zero-rate fallback for genuinely unknown local models,
@@ -1358,6 +1483,14 @@ function selectRule(
 
     if (exactModelScore !== 0) {
       return exactModelScore;
+    }
+
+    const directScore =
+      Number(matchesGlob(right.model, model)) -
+      Number(matchesGlob(left.model, model));
+
+    if (directScore !== 0) {
+      return directScore;
     }
 
     const providerScore =

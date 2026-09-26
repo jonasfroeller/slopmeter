@@ -492,7 +492,7 @@ test("bundled rules only carry first-party source URLs", () => {
 
     assert.match(
       rule.sourceUrl ?? "",
-      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io)\//,
+      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io|open\.bigmodel\.cn|console\.upstage\.ai)\//,
       rule.model,
     );
     assert.doesNotMatch(
@@ -750,3 +750,89 @@ test("GPT-5.6 Terra and Luna use their documented launch and reduced rates", () 
     assert.equal(reducedRate.daily[0]?.cost?.amount, reducedAmount, model);
   }
 });
+
+test("publisher and namespace prefixes are stripped when matching pricing rules", () => {
+  const context = createPricingContext("USD");
+  const cases = [
+    ["openai/gpt-5.6-luna", 1.4],
+    ["deepseek/deepseek-v4-flash", 1.5],
+    ["anthropic/claude-opus-4", 90],
+    ["openrouter/openai/gpt-5.4", 17.5],
+  ] as const;
+
+  for (const [model, expected] of cases) {
+    const priced = priceUsageSummary(
+      createSummary({
+        provider: "freebuff",
+        model,
+        date: "2026-09-15T12:00:00",
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+
+    assert.equal(priced.daily[0]?.cost?.amount, expected, model);
+  }
+});
+
+test("verified Z.ai, Upstage Solar, and MiMo V2.6 models are priced accurately", () => {
+  const context = createPricingContext("USD");
+  const cases = [
+    ["z-ai/glm-5.3-flash", 0.65],
+    ["glm-5.3-flash", 0.65],
+    ["glm-5.3", 5.8],
+    ["upstage/solar-pro4", 1.5],
+    ["solar-pro4", 1.5],
+    ["upstage/solar-mini4", 0.25],
+    ["solar-mini4", 0.25],
+    ["mimo/mimo-v2.6-pro", 1.305],
+    ["mimo-v2.6-pro", 1.305],
+    ["mimo/mimo-v2.6", 0.42],
+  ] as const;
+
+  for (const [model, expected] of cases) {
+    const priced = priceUsageSummary(
+      createSummary({
+        provider: "freebuff",
+        model,
+        date: "2026-09-15T12:00:00",
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+
+    assert.ok(
+      Math.abs((priced.daily[0]?.cost?.amount ?? 0) - expected) < 1e-12,
+      model,
+    );
+  }
+
+  const cachedPro = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "upstage/solar-pro4",
+      date: "2026-09-15T12:00:00",
+      input: 0,
+      output: 0,
+      cacheInput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(cachedPro.daily[0]?.cost?.amount, 0.06);
+
+  const cachedGlm = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "z-ai/glm-5.3-flash",
+      date: "2026-09-15T12:00:00",
+      input: 0,
+      output: 0,
+      cacheInput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(cachedGlm.daily[0]?.cost?.amount, 0.03);
+});
+
