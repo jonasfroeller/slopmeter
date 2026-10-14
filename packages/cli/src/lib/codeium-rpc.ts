@@ -859,9 +859,7 @@ export function parseModelValueFromConfigKey(configKey: string | undefined) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
-  const placeholderMatch = trimmed.match(
-    /^(?:MODEL_PLACEHOLDER_M|M)(\d+)$/i,
-  );
+  const placeholderMatch = trimmed.match(/^(?:MODEL_PLACEHOLDER_M|M)(\d+)$/i);
 
   if (!placeholderMatch) {
     return null;
@@ -1046,7 +1044,10 @@ export function parseGetCommandModelConfigsResponse(
   rawResponse: Uint8Array,
   preferredModelValues?: ReadonlySet<number>,
 ) {
-  return parseGetCascadeModelConfigDataResponse(rawResponse, preferredModelValues);
+  return parseGetCascadeModelConfigDataResponse(
+    rawResponse,
+    preferredModelValues,
+  );
 }
 
 export async function callLanguageServerRpc(
@@ -1091,7 +1092,10 @@ export async function isHttpPortUsable(
 ) {
   const connection = { pid, csrfToken, httpPort: candidatePort };
 
-  for (const method of ["GetUserStatus", "GetAllCascadeTrajectories"] as const) {
+  for (const method of [
+    "GetUserStatus",
+    "GetAllCascadeTrajectories",
+  ] as const) {
     try {
       await callLanguageServerRpc(connection, method);
 
@@ -1348,6 +1352,11 @@ export async function aggregateCodeiumTrajectoryUsage(
   seenUsageKeys: Set<string>,
   maxStepPages: number,
 ) {
+  const result = {
+    hasUsageInWindow: false,
+    readFailed: false,
+    truncated: false,
+  };
   let totalSteps = 0;
   let totalGeneratorMetadata = 0;
 
@@ -1362,11 +1371,11 @@ export async function aggregateCodeiumTrajectoryUsage(
     totalSteps = counts.totalSteps;
     totalGeneratorMetadata = counts.totalGeneratorMetadata;
   } catch {
-    return;
+    return { ...result, readFailed: true };
   }
 
   if (totalSteps <= 0 && totalGeneratorMetadata <= 0) {
-    return;
+    return result;
   }
 
   const seenRawSteps = new Set<string>();
@@ -1384,6 +1393,7 @@ export async function aggregateCodeiumTrajectoryUsage(
 
       stepMessages = parseGetCascadeTrajectoryStepsResponse(response);
     } catch {
+      result.readFailed ||= totalSteps > 0;
       break;
     }
 
@@ -1409,15 +1419,15 @@ export async function aggregateCodeiumTrajectoryUsage(
         dynamicModelLabels,
         resolveModelName,
       )) {
+        if (parsedUsage.date < start || parsedUsage.date > end) {
+          continue;
+        }
+        result.hasUsageInWindow = true;
         if (seenUsageKeys.has(parsedUsage.usageKey)) {
           continue;
         }
 
         seenUsageKeys.add(parsedUsage.usageKey);
-
-        if (parsedUsage.date < start || parsedUsage.date > end) {
-          continue;
-        }
 
         addDailyTokenTotals(
           totals,
@@ -1462,6 +1472,7 @@ export async function aggregateCodeiumTrajectoryUsage(
           Math.ceil(totalGeneratorMetadata / CODEIUM_STEP_PAGE_SIZE),
         )
       : maxStepPages;
+  let generatorEntriesRead = 0;
 
   for (
     let generatorPageIndex = 0;
@@ -1485,12 +1496,14 @@ export async function aggregateCodeiumTrajectoryUsage(
       generatorMetadataEntries =
         parseGetCascadeTrajectoryGeneratorMetadataResponse(response);
     } catch {
+      result.readFailed ||= totalGeneratorMetadata > 0;
       break;
     }
 
     if (generatorMetadataEntries.length === 0) {
       break;
     }
+    generatorEntriesRead += generatorMetadataEntries.length;
 
     for (const [
       entryIndex,
@@ -1504,15 +1517,15 @@ export async function aggregateCodeiumTrajectoryUsage(
         resolveModelName,
       );
 
-      if (!parsedUsage || seenUsageKeys.has(parsedUsage.usageKey)) {
+      if (!parsedUsage || parsedUsage.date < start || parsedUsage.date > end) {
         continue;
       }
+      result.hasUsageInWindow = true;
 
+      if (seenUsageKeys.has(parsedUsage.usageKey)) {
+        continue;
+      }
       seenUsageKeys.add(parsedUsage.usageKey);
-
-      if (parsedUsage.date < start || parsedUsage.date > end) {
-        continue;
-      }
 
       addDailyTokenTotals(
         totals,
@@ -1551,6 +1564,13 @@ export async function aggregateCodeiumTrajectoryUsage(
       break;
     }
   }
+
+  result.truncated =
+    (totalSteps > 0 && seenRawSteps.size < totalSteps) ||
+    (totalGeneratorMetadata > 0 &&
+      generatorEntriesRead < totalGeneratorMetadata);
+
+  return result;
 }
 
 export function aggregateCodeiumDebugUsage(
@@ -1572,15 +1592,14 @@ export function aggregateCodeiumDebugUsage(
       dynamicModelLabels,
       resolveModelName,
     )) {
+      if (parsedUsage.date < start || parsedUsage.date > end) {
+        continue;
+      }
       if (seenUsageKeys.has(parsedUsage.usageKey)) {
         continue;
       }
 
       seenUsageKeys.add(parsedUsage.usageKey);
-
-      if (parsedUsage.date < start || parsedUsage.date > end) {
-        continue;
-      }
 
       addDailyTokenTotals(
         totals,

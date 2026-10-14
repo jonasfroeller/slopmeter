@@ -259,7 +259,8 @@ When Claude Code falls back to `history.jsonl`, those days are rendered as activ
 - If no provider flags are passed, `slopmeter` renders every provider with available data.
 - If `--all` is passed, `slopmeter` loads all providers and renders one combined graph with merged totals, streaks, and model rankings.
 - Pi Coding Agent usage is derived from assistant messages in Pi session logs, grouped by the model that handled each turn.
-- Antigravity usage is derived from local Antigravity language server trajectory RPCs plus trajectory IDs from local Antigravity unified state.
+- Antigravity reads token metadata from local conversation databases and can recover more records through its running language server. Discovery requires an Antigravity process and excludes Windsurf, which shares the RPC protocol. Recovery also tries old session IDs retained in unified state, standalone summaries, and legacy `.pb` filenames, even when the server's current session list omits them. Duplicate usage identifiers are counted once across those sources.
+- Antigravity session summaries can preserve activity after the actual token records disappear. Those sessions remain visible as activity, but do not contribute invented tokens. Partial reports show **Recorded tokens**; reports with only unmeasured activity show **Unknown**. JSON exports include optional `coverage` information about unmeasured sessions, unreadable sources, and scan limits. This metadata also survives `--all` aggregation.
 - Freebuff usage is derived from assistant-message usage records in local `chat-messages.json` files, or, when those files are unavailable, from the authenticated local Freebuff Desktop API.
 - Continue usage is derived from `promptTokens` and `generatedTokens` records. Records without timestamps use the source file's modification date.
 - Vercel FX usage is derived from `generation` facts. Repeated facts with the same generation ID are treated as updates, not double-counted.
@@ -273,14 +274,15 @@ GitHub Copilot is intentionally not supported. Its documented usage surfaces are
 
 Environment variables can be exported in your shell or defined in a local `.env` file (see `.env.example`). `slopmeter` automatically loads `.env` files on startup.
 
-- `ANTIGRAVITY_CONFIG_DIR`: override the Antigravity config root used for log discovery.
+- `ANTIGRAVITY_CONFIG_DIR`: override the Antigravity config root used for logs, state databases, and standalone historical summaries.
+- `ANTIGRAVITY_CONVERSATIONS_DIR`: override the directory containing Antigravity `.db` and legacy `.pb` conversation files.
 - `ANTIGRAVITY_LOG_PATH`: override Antigravity log discovery with an explicit `Antigravity.log` file path.
 - `ANTIGRAVITY_LS_PID`: force a language server PID for RPC discovery.
 - `ANTIGRAVITY_LS_HTTP_PORT`: force the Antigravity LS HTTP port.
 - `ANTIGRAVITY_LS_CSRF_TOKEN`: force the Antigravity LS CSRF token.
 - `ANTIGRAVITY_STATE_DB_PATH`: override Antigravity unified-state DB discovery with an explicit `state.vscdb` path.
-- `ANTIGRAVITY_MAX_TRAJECTORIES`: cap the number of cascades scanned per run. Default: `200`.
-- `ANTIGRAVITY_MAX_STEP_PAGES`: cap per-cascade step page fetches (20-step page size). Default: `100`.
+- `ANTIGRAVITY_MAX_TRAJECTORIES`: cap language-server trajectory reads per run. Default: `1000`. Local database reads are not capped. Reports flag when this limit leaves sessions unattempted.
+- `ANTIGRAVITY_MAX_STEP_PAGES`: cap per-trajectory step and generator metadata page fetches (20 records per page). Default: `100`. Reports flag incomplete reads when more records are reported by the server.
 - `FREEBUFF_CONFIG_DIR`: override the Freebuff configuration root. Multiple roots may be comma-separated.
 - `FREEBUFF_DATA_DIR`: compatibility alias for `FREEBUFF_CONFIG_DIR`.
 - `FREEBUFF_API_URL`: override the local Freebuff Desktop API URL. Multiple comma-separated URLs are supported; otherwise the running Desktop orchestrator log and `http://127.0.0.1:12382` are checked.

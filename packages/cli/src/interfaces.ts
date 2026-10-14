@@ -20,12 +20,7 @@ export type UsageProviderId =
   | "warp"
   | "all";
 
-export type CostBasis =
-  | "reported"
-  | "estimated"
-  | "free"
-  | "unknown"
-  | "mixed";
+export type CostBasis = "reported" | "estimated" | "free" | "unknown" | "mixed";
 
 export type CostCoverage = "complete" | "partial" | "unknown";
 
@@ -71,6 +66,16 @@ export interface UsageSummary {
   daily: DailyUsage[];
   insights?: Insights;
   pricing?: PricingMetadata;
+  coverage?: UsageCoverage;
+}
+
+export interface UsageCoverage {
+  /** Counts describe known gaps, not an estimate of missing tokens. */
+  status: "partial" | "unknown";
+  unmeasuredSessions: number;
+  unreadableSources: number;
+  truncatedSessions: number;
+  sessionLimitReached: boolean;
 }
 
 export interface DailyUsage {
@@ -139,6 +144,7 @@ export interface JsonUsageSummary {
   daily: JsonDailyUsage[];
   insights?: JsonInsights;
   models?: ModelTableEntry[];
+  coverage?: UsageCoverage;
 }
 
 export interface JsonInsights {

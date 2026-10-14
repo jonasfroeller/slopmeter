@@ -5,6 +5,7 @@ import type {
   ModelUsage,
   PricingMetadata,
   UsageCost,
+  UsageCoverage,
 } from "./interfaces";
 import type { ProviderId } from "./lib/interfaces";
 import { formatLocalDate, mergeUsageCosts } from "./lib/utils";
@@ -61,6 +62,7 @@ interface DrawHeatmapSectionOptions {
   layout: SectionLayout;
   daily: DailyUsage[];
   insights?: Insights;
+  coverage?: UsageCoverage;
   title?: string;
   titleCaption?: string;
   showCost?: boolean;
@@ -72,6 +74,7 @@ interface DrawHeatmapSectionOptions {
 interface RenderUsageHeatmapsSvgSection {
   daily: DailyUsage[];
   insights?: Insights;
+  coverage?: UsageCoverage;
   title: string;
   titleCaption?: string;
   pricing?: PricingMetadata;
@@ -599,6 +602,7 @@ function getMonthLabel(week: (string | null)[]) {
 
   return new Date(`${lastDay}T00:00:00`).toLocaleString("en-US", {
     month: "short",
+    year: "numeric",
   });
 }
 
@@ -611,13 +615,6 @@ function defaultColourMap(value: number, max: number, colorCount: number) {
   const index = Math.ceil(scaled * (colorCount - 1));
 
   return Math.min(Math.max(index, 0), colorCount - 1);
-}
-
-function formatShortDate(dateIso: string) {
-  return new Date(`${dateIso}T00:00:00`).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function getCalendarGrid(startDate: Date, endDate: Date) {
@@ -653,7 +650,7 @@ function getSectionLayout(
     ? metricValueFontSize
     : providerTitleFontSize;
   const titleLineHeight = titleFontSize + 4;
-  const monthHeaderHeight = 20;
+  const monthHeaderHeight = 32;
   const gridHeight = 7 * cellSize + 6 * gap;
   const gridWidth = weekCount * cellSize + Math.max(weekCount - 1, 0) * gap;
   const minWidth =
@@ -724,6 +721,7 @@ function drawHeatmapSection(
     layout,
     daily,
     insights,
+    coverage,
     title,
     titleCaption,
     showCost = false,
@@ -743,7 +741,6 @@ function drawHeatmapSection(
   let totalTokens = 0;
   let totalCost: UsageCost | undefined;
   let firstActivityOnlyDate: string | null = null;
-  let firstMeasuredDate: string | null = null;
 
   for (const row of daily) {
     const dateKey = formatLocalDate(row.date);
@@ -755,11 +752,6 @@ function drawHeatmapSection(
       if (!firstActivityOnlyDate || dateKey < firstActivityOnlyDate) {
         firstActivityOnlyDate = dateKey;
       }
-    } else if (
-      row.total > 0 &&
-      (!firstMeasuredDate || dateKey < firstMeasuredDate)
-    ) {
-      firstMeasuredDate = dateKey;
     }
     totalInputTokens += row.input;
     totalOutputTokens += row.output;
@@ -773,7 +765,11 @@ function drawHeatmapSection(
   const headerOutputX = rightEdge - metricGap * (showCost ? 2 : 1);
   const headerTotalX = showCost ? rightEdge - metricGap : rightEdge;
   const headerCostX = rightEdge;
-  const totalTokensLabel = formatTokenTotal(totalTokens);
+  const partialCoverage = Boolean(coverage || firstActivityOnlyDate);
+  const totalTokensLabel =
+    partialCoverage && totalTokens === 0
+      ? "Unknown"
+      : formatTokenTotal(totalTokens);
   const totalInputLabel = formatTokenTotal(totalInputTokens);
   const totalOutputLabel = formatTokenTotal(totalOutputTokens);
   const totalCostLabel = formatUsageCost(totalCost, true);
@@ -877,7 +873,7 @@ function drawHeatmapSection(
       "dominant-baseline": "hanging",
       "font-family": fontFamily,
     },
-    caption("Total tokens"),
+    caption(partialCoverage ? "Recorded tokens" : "Total tokens"),
   );
 
   svg = svg.text(
@@ -951,6 +947,7 @@ function drawHeatmapSection(
     const monthLabel = grid.monthLabels[weekIndex];
 
     if (monthLabel) {
+      const [month, year] = monthLabel.split(" ");
       const monthX =
         x + layout.leftLabelWidth + weekIndex * (layout.cellSize + layout.gap);
 
@@ -962,7 +959,17 @@ function drawHeatmapSection(
           "font-size": 10,
           "font-family": fontFamily,
         },
-        monthLabel,
+        month,
+      );
+      svg = svg.text(
+        {
+          x: monthX,
+          y: y + layout.monthLabelY + 12,
+          fill: palette.muted,
+          "font-size": 8,
+          "font-family": fontFamily,
+        },
+        year,
       );
     }
   }
@@ -1047,8 +1054,7 @@ function drawHeatmapSection(
   let noteIndex = 0;
   const noteX = x + layout.width / 2;
 
-  if (firstActivityOnlyDate && firstMeasuredDate) {
-    const providerName = title ? title.trim().split(" ")[0] : "Full";
+  if (partialCoverage) {
     svg = svg.text(
       {
         x: noteX,
@@ -1059,7 +1065,11 @@ function drawHeatmapSection(
         "dominant-baseline": "hanging",
         "font-family": fontFamily,
       },
-      `${providerName} started logging full token telemetry on ${formatShortDate(firstMeasuredDate)}; earlier activity may be undercounted.`,
+      coverage?.unmeasuredSessions
+        ? `${coverage.unmeasuredSessions} sessions have activity records but no readable token counts; totals are partial.`
+        : firstActivityOnlyDate
+          ? "Activity without token counts is excluded from the totals."
+          : "Some usage could not be read; token totals may be incomplete.",
     );
     noteIndex += 1;
   }
@@ -1269,6 +1279,7 @@ export function renderUsageHeatmapsSvg({
       layout: metrics.layout,
       daily: section.daily,
       insights: section.insights,
+      coverage: section.coverage,
       title: section.title,
       titleCaption: section.titleCaption,
       showCost: section.showCost,

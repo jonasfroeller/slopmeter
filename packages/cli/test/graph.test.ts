@@ -117,3 +117,79 @@ test("SVG stays token-only when no pricing is available", () => {
   assert.doesNotMatch(svg, /ESTIMATED COST/);
   assert.doesNotMatch(svg, />COST</);
 });
+
+test("activity without readable tokens is labelled unknown rather than zero lifetime usage", () => {
+  const svg = renderUsageHeatmapsSvg({
+    startDate: new Date("2026-01-01T00:00:00"),
+    endDate: new Date("2026-01-31T00:00:00"),
+    colorMode: "light",
+    sections: [
+      {
+        title: "Antigravity",
+        colors: heatmapThemes.antigravity.colors,
+        daily: [
+          {
+            date: new Date("2026-01-05T12:00:00"),
+            input: 0,
+            output: 0,
+            cache: { input: 0, output: 0 },
+            total: 0,
+            displayValue: 1,
+            breakdown: [],
+          },
+        ],
+        coverage: {
+          status: "unknown",
+          unmeasuredSessions: 116,
+          unreadableSources: 0,
+          truncatedSessions: 0,
+          sessionLimitReached: false,
+        },
+      },
+    ],
+  });
+  assert.match(svg, /RECORDED TOKENS/);
+  assert.match(svg, /Unknown/);
+  assert.match(
+    svg,
+    /116 sessions have activity records but no readable token counts/,
+  );
+  assert.doesNotMatch(svg, /started logging full token telemetry/);
+});
+
+test("missing sessions are reported even on dates that also contain measured usage", () => {
+  const svg = renderUsageHeatmapsSvg({
+    startDate: new Date("2026-01-01T00:00:00"),
+    endDate: new Date("2026-01-31T00:00:00"),
+    colorMode: "light",
+    sections: [
+      {
+        title: "Antigravity",
+        colors: heatmapThemes.antigravity.colors,
+        daily: [
+          {
+            date: new Date("2026-01-05T12:00:00"),
+            input: 100,
+            output: 20,
+            cache: { input: 0, output: 0 },
+            total: 120,
+            breakdown: [],
+          },
+        ],
+        coverage: {
+          status: "partial",
+          unmeasuredSessions: 2,
+          unreadableSources: 0,
+          truncatedSessions: 0,
+          sessionLimitReached: false,
+        },
+      },
+    ],
+  });
+  assert.match(svg, /RECORDED TOKENS/);
+  assert.match(
+    svg,
+    /2 sessions have activity records but no readable token counts/,
+  );
+  assert.doesNotMatch(svg, /Unknown/);
+});

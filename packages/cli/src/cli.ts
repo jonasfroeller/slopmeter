@@ -265,6 +265,7 @@ function toJsonUsageSummary(
   return {
     provider: summary.provider,
     insights: toJsonInsights(summary.insights),
+    ...(summary.coverage ? { coverage: summary.coverage } : {}),
     ...(models && models.length > 0 ? { models } : {}),
     daily: summary.daily.map((row) => ({
       date: formatLocalDate(row.date),
@@ -503,7 +504,10 @@ async function main() {
     const { start, end } = getDateWindow();
     const colorMode: ColorMode = values.dark ? "dark" : "light";
     const format = inferFormat(values.format, values.output);
-    const pricingContext = createPricingContext(values.currency, values.pricing);
+    const pricingContext = createPricingContext(
+      values.currency,
+      values.pricing,
+    );
     const requestedProviders = values.all
       ? providerIds
       : getRequestedProviders(values);
@@ -573,23 +577,26 @@ async function main() {
         endDate: end,
         colorMode,
         includeModelsCard: values.models,
-        sections: exportProviders.map(({ provider, daily, insights }) => ({
-          daily,
-          insights,
-          pricing: pricingContext.metadata,
-          showCost: hasPricedCost({
-            provider,
+        sections: exportProviders.map(
+          ({ provider, daily, insights, coverage }) => ({
             daily,
             insights,
+            coverage,
             pricing: pricingContext.metadata,
+            showCost: hasPricedCost({
+              provider,
+              daily,
+              insights,
+              pricing: pricingContext.metadata,
+            }),
+            title:
+              provider === "all"
+                ? getMergedProviderTitle(rowsByProvider, sortOptions)
+                : heatmapThemes[provider].title,
+            titleCaption: heatmapThemes[provider].titleCaption,
+            colors: heatmapThemes[provider].colors,
           }),
-          title:
-            provider === "all"
-              ? getMergedProviderTitle(rowsByProvider, sortOptions)
-              : heatmapThemes[provider].title,
-          titleCaption: heatmapThemes[provider].titleCaption,
-          colors: heatmapThemes[provider].colors,
-        })),
+        ),
       });
       const background = colorMode === "dark" ? "#171717" : "#ffffff";
 

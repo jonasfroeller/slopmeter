@@ -143,9 +143,7 @@ function cloneTokenTotals(
   return clone;
 }
 
-function cloneReportedCost(
-  reportedCost: ReportedUsageCost,
-): ReportedUsageCost {
+function cloneReportedCost(reportedCost: ReportedUsageCost): ReportedUsageCost {
   return {
     amountUsd: reportedCost.amountUsd,
     tokens: {
@@ -443,7 +441,9 @@ function defaultOversizedJsonTextMessage({
   return `JSON payload exceeds ${maxBytes} bytes in ${sourceLabel}. Increase ${envVarName} to process this payload.`;
 }
 
-function keepAllJsonlRecords<TClassification>(): JsonlRecordDecision<TClassification> {
+function keepAllJsonlRecords<
+  TClassification,
+>(): JsonlRecordDecision<TClassification> {
   return { kind: "keep", classification: undefined as TClassification };
 }
 
@@ -487,7 +487,9 @@ export async function* readJsonlRecords<TClassification = void>(
       return;
     }
 
-    decision = classify(Buffer.concat(prefixChunks, prefixBytes).toString("utf8"));
+    decision = classify(
+      Buffer.concat(prefixChunks, prefixBytes).toString("utf8"),
+    );
 
     if (decision.kind === "skip") {
       retainedChunks = [];
@@ -1082,6 +1084,30 @@ export function mergeUsageSummaries(
   return {
     ...merged,
     pricing: summaries.find((summary) => summary.pricing)?.pricing,
+    ...(summaries.some((summary) => summary.coverage)
+      ? {
+          coverage: {
+            status: daily.some((row) => row.total > 0)
+              ? ("partial" as const)
+              : ("unknown" as const),
+            unmeasuredSessions: summaries.reduce(
+              (n, summary) => n + (summary.coverage?.unmeasuredSessions ?? 0),
+              0,
+            ),
+            unreadableSources: summaries.reduce(
+              (n, summary) => n + (summary.coverage?.unreadableSources ?? 0),
+              0,
+            ),
+            truncatedSessions: summaries.reduce(
+              (n, summary) => n + (summary.coverage?.truncatedSessions ?? 0),
+              0,
+            ),
+            sessionLimitReached: summaries.some(
+              (summary) => summary.coverage?.sessionLimitReached,
+            ),
+          },
+        }
+      : {}),
     daily,
     insights: merged.insights
       ? {
