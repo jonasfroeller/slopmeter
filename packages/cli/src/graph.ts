@@ -61,6 +61,7 @@ interface DrawHeatmapSectionOptions {
   layout: SectionLayout;
   daily: DailyUsage[];
   insights?: Insights;
+  title?: string;
   titleCaption?: string;
   showCost?: boolean;
   colors: HeatmapTheme["colors"];
@@ -723,6 +724,7 @@ function drawHeatmapSection(
     layout,
     daily,
     insights,
+    title,
     titleCaption,
     showCost = false,
     colors,
@@ -1046,6 +1048,7 @@ function drawHeatmapSection(
   const noteX = x + layout.width / 2;
 
   if (firstActivityOnlyDate && firstMeasuredDate) {
+    const providerName = title ? title.trim().split(" ")[0] : "Full";
     svg = svg.text(
       {
         x: noteX,
@@ -1056,7 +1059,7 @@ function drawHeatmapSection(
         "dominant-baseline": "hanging",
         "font-family": fontFamily,
       },
-      `Claude started logging full token telemetry on ${formatShortDate(firstMeasuredDate)}; earlier activity may be undercounted.`,
+      `${providerName} started logging full token telemetry on ${formatShortDate(firstMeasuredDate)}; earlier activity may be undercounted.`,
     );
     noteIndex += 1;
   }
@@ -1266,6 +1269,7 @@ export function renderUsageHeatmapsSvg({
       layout: metrics.layout,
       daily: section.daily,
       insights: section.insights,
+      title: section.title,
       titleCaption: section.titleCaption,
       showCost: section.showCost,
       colors: section.colors,

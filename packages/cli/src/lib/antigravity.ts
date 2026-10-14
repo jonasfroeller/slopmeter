@@ -19,9 +19,9 @@ import {
   formatCodeiumModelName,
   getNetstatListeningPortsByPid,
   getProtoBytes,
+  getProtoVarint,
   getRepeatedProtoBytes,
   mergeModelLabelMaps,
-  mergeTrajectoryIds,
   parseCsrfTokenFromCommandLine,
   parseGeneratorMetadataUsage,
   parseGetAllCascadeTrajectoriesResponse,
@@ -39,6 +39,7 @@ import {
   addDailyTokenTotals,
   addModelTokenTotals,
   createUsageSummary,
+  formatLocalDate,
   getPositiveIntegerEnv,
   getRecentWindowStart,
   listFilesRecursive,
@@ -64,6 +65,8 @@ const ANTIGRAVITY_TRAJECTORY_SUMMARY_KEYS = [
   "antigravityUnifiedStateSync.trajectorySummaries",
   "unifiedStateSync.trajectorySummaries",
 ] as const;
+const ANTIGRAVITY_AGENT_MANAGER_INIT_KEY =
+  "jetskiStateSync.agentManagerInitState";
 
 const DEFAULT_MAX_TRAJECTORIES = 1_000;
 const DEFAULT_MAX_STEP_PAGES = 100;
@@ -115,6 +118,7 @@ const antigravityModelNames = new Map<number, string>([
   [351, "MODEL_GOOGLE_GEMINI_INFINITYBLOOM"],
   [352, "MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_LOW"],
   [353, "MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_HIGH"],
+  [1018, "Gemini 3 Flash"],
   [1026, "Claude Opus 4.6 (Thinking)"],
   [1035, "Claude Sonnet 4.6 (Thinking)"],
   [1071, "Gemini 3.6 Flash (High)"],
@@ -261,7 +265,14 @@ function normalizeAntigravityDatabaseValue(value: unknown) {
   return undefined;
 }
 
-function readAntigravityTrajectorySummaryValuesFromDatabase(databasePath: string) {
+interface AntigravityDatabaseStateValues {
+  trajectorySummaries: string[];
+  agentManagerInitState?: string;
+}
+
+function readAntigravityDatabaseStateValues(
+  databasePath: string,
+): AntigravityDatabaseStateValues {
   const database = new Database(databasePath, {
     readonly: true,
     fileMustExist: true,
@@ -271,18 +282,28 @@ function readAntigravityTrajectorySummaryValuesFromDatabase(databasePath: string
     const query = database.prepare(
       "SELECT value FROM ItemTable WHERE key = ? LIMIT 1",
     );
-    const values: string[] = [];
+    const trajectorySummaries: string[] = [];
 
     for (const key of ANTIGRAVITY_TRAJECTORY_SUMMARY_KEYS) {
       const row = query.get(key) as { value?: unknown } | undefined;
       const value = normalizeAntigravityDatabaseValue(row?.value);
 
       if (value) {
-        values.push(value);
+        trajectorySummaries.push(value);
       }
     }
 
-    return values;
+    const agentManagerRow = query.get(ANTIGRAVITY_AGENT_MANAGER_INIT_KEY) as
+      | { value?: unknown }
+      | undefined;
+    const agentManagerInitState = normalizeAntigravityDatabaseValue(
+      agentManagerRow?.value,
+    );
+
+    return {
+      trajectorySummaries,
+      agentManagerInitState,
+    };
   } finally {
     database.close();
   }
@@ -318,49 +339,194 @@ async function withAntigravityStateSnapshot<T>(
   }
 }
 
-function parseStateTrajectoryIds(rawEncodedSummaries: string[]) {
-  const trajectoryIds: string[] = [];
-  const seenTrajectoryIds = new Set<string>();
+interface AntigravityHistoricalSession {
+  trajectoryId: string;
+  date: Date;
+  stepCount: number;
+}
 
-  for (const encodedSummary of rawEncodedSummaries) {
-    if (!encodedSummary) {
-      continue;
-    }
+function decodeNestedSummaryBytes(raw: Uint8Array): Uint8Array {
+  const str = decodeUtf8(raw);
 
-    let rawSummary: Uint8Array;
-
+  if (str && /^[A-Za-z0-9+/=]+$/.test(str.trim())) {
     try {
-      rawSummary = new Uint8Array(Buffer.from(encodedSummary, "base64"));
+      return new Uint8Array(Buffer.from(str.trim(), "base64"));
     } catch {
-      continue;
-    }
-
-    if (rawSummary.length === 0) {
-      continue;
-    }
-
-    const summaryFields = parseProtoFields(rawSummary);
-    const mapEntries = getRepeatedProtoBytes(summaryFields, 1);
-
-    for (const mapEntry of mapEntries) {
-      const mapEntryFields = parseProtoFields(mapEntry);
-      const trajectoryId = decodeUtf8(getProtoBytes(mapEntryFields, 1));
-
-      if (!trajectoryId || seenTrajectoryIds.has(trajectoryId)) {
-        continue;
-      }
-
-      seenTrajectoryIds.add(trajectoryId);
-      trajectoryIds.push(trajectoryId);
+      return raw;
     }
   }
 
-  return trajectoryIds;
+  return raw;
 }
 
-async function getStateTrajectoryIds() {
+function parseHistoricalSessionFromSummaryBytes(
+  trajectoryId: string,
+  rawSummaryBytes: Uint8Array,
+): AntigravityHistoricalSession | null {
+  try {
+    const summaryBytes = decodeNestedSummaryBytes(rawSummaryBytes);
+    const fields = parseProtoFields(summaryBytes);
+    const stepCount = Number(getProtoVarint(fields, 2) ?? 0n);
+    const date =
+      parseTimestamp(getProtoBytes(fields, 7)) ??
+      parseTimestamp(getProtoBytes(fields, 3)) ??
+      parseTimestamp(getProtoBytes(fields, 10));
+
+    if (!date) {
+      return null;
+    }
+
+    return {
+      trajectoryId,
+      date,
+      stepCount,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function collectTrajectorySummariesSessions(
+  rawBytes: Uint8Array,
+  onSession: (session: AntigravityHistoricalSession) => void,
+) {
+  const topFields = parseProtoFields(rawBytes);
+
+  for (const itemBytes of getRepeatedProtoBytes(topFields, 1)) {
+    const itemFields = parseProtoFields(itemBytes);
+    const trajectoryId = decodeUtf8(getProtoBytes(itemFields, 1));
+    const containerBytes = getProtoBytes(itemFields, 2);
+
+    if (!trajectoryId || !containerBytes) {
+      continue;
+    }
+
+    const containerFields = parseProtoFields(containerBytes);
+    const summaryPayload = getProtoBytes(containerFields, 1);
+
+    if (!summaryPayload) {
+      continue;
+    }
+
+    const session = parseHistoricalSessionFromSummaryBytes(
+      trajectoryId,
+      summaryPayload,
+    );
+
+    if (session) {
+      onSession(session);
+    }
+  }
+}
+
+function collectAgentManagerInitSessions(
+  rawBytes: Uint8Array,
+  onSession: (session: AntigravityHistoricalSession) => void,
+) {
+  const fields = parseProtoFields(rawBytes);
+  const field1Bytes = getProtoBytes(fields, 1);
+
+  if (field1Bytes) {
+    const innerFields = parseProtoFields(field1Bytes);
+
+    for (const itemBytes of getRepeatedProtoBytes(innerFields, 1)) {
+      const itemFields = parseProtoFields(itemBytes);
+      const trajectoryId = decodeUtf8(getProtoBytes(itemFields, 1));
+      const summaryPayload = getProtoBytes(itemFields, 2);
+
+      if (!trajectoryId || !summaryPayload) {
+        continue;
+      }
+
+      const session = parseHistoricalSessionFromSummaryBytes(
+        trajectoryId,
+        summaryPayload,
+      );
+
+      if (session) {
+        onSession(session);
+      }
+    }
+  }
+
+  for (const field of fields) {
+    if (field.fieldNumber !== 10 || !(field.value instanceof Uint8Array)) {
+      continue;
+    }
+
+    const subFields = parseProtoFields(field.value);
+    const trajectoryId = decodeUtf8(getProtoBytes(subFields, 1));
+    const date = parseTimestamp(getProtoBytes(subFields, 2));
+
+    if (trajectoryId && date) {
+      onSession({
+        trajectoryId,
+        date,
+        stepCount: 0,
+      });
+    }
+  }
+}
+
+function getAntigravityStandaloneSummaryPaths(): string[] {
+  const home = homedir();
+  const candidates: string[] = [
+    join(home, ".gemini", "antigravity", "agyhub_summaries_proto.pb"),
+    join(home, ".gemini", "antigravity-ide", "agyhub_summaries_proto.pb"),
+    join(home, ".gemini", "antigravity", "jetbox_summaries_proto.pb"),
+    join(home, ".gemini", "antigravity-ide", "jetbox_summaries_proto.pb"),
+  ];
+
+  return candidates.filter((candidatePath) => existsSync(candidatePath));
+}
+
+async function collectStandaloneSummaryFileSessions(
+  filePath: string,
+  onSession: (session: AntigravityHistoricalSession) => void,
+) {
+  let fileBuffer: Buffer;
+
+  try {
+    fileBuffer = await readFile(filePath);
+  } catch {
+    return;
+  }
+
+  const topFields = parseProtoFields(new Uint8Array(fileBuffer));
+
+  for (const itemBytes of getRepeatedProtoBytes(topFields, 1)) {
+    const itemFields = parseProtoFields(itemBytes);
+    const trajectoryId = decodeUtf8(getProtoBytes(itemFields, 1));
+    const summaryPayload = getProtoBytes(itemFields, 2);
+
+    if (!trajectoryId || !summaryPayload) {
+      continue;
+    }
+
+    const session = parseHistoricalSessionFromSummaryBytes(
+      trajectoryId,
+      summaryPayload,
+    );
+
+    if (session) {
+      onSession(session);
+    }
+  }
+}
+
+async function getAntigravityHistoricalSessions(): Promise<
+  Map<string, AntigravityHistoricalSession>
+> {
+  const sessions = new Map<string, AntigravityHistoricalSession>();
+  const addSession = (session: AntigravityHistoricalSession) => {
+    const existing = sessions.get(session.trajectoryId);
+
+    if (!existing || existing.date > session.date) {
+      sessions.set(session.trajectoryId, session);
+    }
+  };
+
   const candidates = getAntigravityStateDbCandidates();
-  const allSummaries: string[] = [];
 
   for (const databasePath of candidates) {
     if (!existsSync(databasePath)) {
@@ -368,18 +534,18 @@ async function getStateTrajectoryIds() {
     }
 
     const readValues = (path: string) =>
-      readAntigravityTrajectorySummaryValuesFromDatabase(path);
-    let rawEncodedSummaries: string[];
+      readAntigravityDatabaseStateValues(path);
+    let stateValues: AntigravityDatabaseStateValues;
 
     try {
-      rawEncodedSummaries = readValues(databasePath);
+      stateValues = readValues(databasePath);
     } catch (error) {
       if (!isSqliteLockedError(error)) {
         continue;
       }
 
       try {
-        rawEncodedSummaries = await withAntigravityStateSnapshot(
+        stateValues = await withAntigravityStateSnapshot(
           databasePath,
           async (snapshotPath) => readValues(snapshotPath),
         );
@@ -388,10 +554,38 @@ async function getStateTrajectoryIds() {
       }
     }
 
-    allSummaries.push(...rawEncodedSummaries);
+    for (const encodedSummary of stateValues.trajectorySummaries) {
+      try {
+        const rawBytes = new Uint8Array(Buffer.from(encodedSummary, "base64"));
+
+        if (rawBytes.length > 0) {
+          collectTrajectorySummariesSessions(rawBytes, addSession);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (stateValues.agentManagerInitState) {
+      try {
+        const rawBytes = new Uint8Array(
+          Buffer.from(stateValues.agentManagerInitState, "base64"),
+        );
+
+        if (rawBytes.length > 0) {
+          collectAgentManagerInitSessions(rawBytes, addSession);
+        }
+      } catch {
+        // continue with other state entries
+      }
+    }
   }
 
-  return parseStateTrajectoryIds(allSummaries);
+  for (const summaryPath of getAntigravityStandaloneSummaryPaths()) {
+    await collectStandaloneSummaryFileSessions(summaryPath, addSession);
+  }
+
+  return sessions;
 }
 
 function getExplicitLogPath() {
@@ -1057,7 +1251,6 @@ export async function loadAntigravityRows(
 
   const processedTrajectoryIds = new Set<string>();
   const conversationDirs = getAntigravityConversationDirectories();
-  const pbTrajectoryIds = new Set<string>();
 
   for (const dir of conversationDirs) {
     let files: string[];
@@ -1093,40 +1286,40 @@ export async function loadAntigravityRows(
         if (loaded) {
           processedTrajectoryIds.add(trajectoryId);
         }
-      } else if (file.endsWith(".pb")) {
-        pbTrajectoryIds.add(basename(file, ".pb"));
       }
     }
   }
 
-  let rpcCascadeIds: string[] = [];
-  let stateCascadeIds: string[] = [];
+  const historicalSessions = await getAntigravityHistoricalSessions();
+  const displayValuesByDate = new Map<string, number>();
+
+  for (const session of historicalSessions.values()) {
+    if (session.date < start || session.date > end) {
+      continue;
+    }
+
+    const dateKey = formatLocalDate(session.date);
+    const activityWeight = session.stepCount > 0 ? session.stepCount : 1;
+
+    displayValuesByDate.set(
+      dateKey,
+      (displayValuesByDate.get(dateKey) ?? 0) + activityWeight,
+    );
+  }
 
   if (connection) {
+    let rpcCascadeIds: string[] = [];
+
     try {
       rpcCascadeIds = await getCascadeIds(connection);
     } catch {
-      // continue: unified state cache can still provide trajectory IDs
+      // continue: local databases and historical sessions provide coverage
     }
-  }
 
-  try {
-    stateCascadeIds = await getStateTrajectoryIds();
-  } catch {
-    // continue: RPC IDs can still provide trajectory coverage
-  }
+    const remainingTrajectoryIds = rpcCascadeIds.filter(
+      (id) => !processedTrajectoryIds.has(id),
+    );
 
-  const allCandidateIds = mergeTrajectoryIds(
-    rpcCascadeIds,
-    stateCascadeIds,
-    [...pbTrajectoryIds],
-  );
-
-  const remainingTrajectoryIds = allCandidateIds.filter(
-    (id) => !processedTrajectoryIds.has(id),
-  );
-
-  if (connection && remainingTrajectoryIds.length > 0) {
     for (const trajectoryId of remainingTrajectoryIds.slice(0, maxTrajectories)) {
       await aggregateCodeiumTrajectoryUsage(
         connection,
@@ -1151,5 +1344,6 @@ export async function loadAntigravityRows(
     modelTotals,
     recentModelTotals,
     end,
+    displayValuesByDate,
   );
 }
