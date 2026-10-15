@@ -126,8 +126,7 @@ function getFreebuffSupportRoots(): string[] {
 }
 
 async function getFreebuffApiUrls(): Promise<string[]> {
-  const configuredUrls = process.env[FREEBUFF_API_URL_ENV]
-    ?.split(",")
+  const configuredUrls = process.env[FREEBUFF_API_URL_ENV]?.split(",")
     .map((url) => url.trim())
     .filter((url) => url !== "")
     .map((url) => url.replace(/\/$/, ""));
@@ -364,8 +363,8 @@ export function createFreebuffTokenTotals(
 ): DailyTokenTotals {
   const cacheRead = asNonNegativeNumber(usage.cache_read_input_tokens);
   const cacheCreation = asNonNegativeNumber(usage.cache_creation_input_tokens);
-  const input = asNonNegativeNumber(usage.input_tokens) + cacheRead;
-  const output = asNonNegativeNumber(usage.output_tokens) + cacheCreation;
+  const input = Math.max(asNonNegativeNumber(usage.input_tokens), cacheRead);
+  const output = asNonNegativeNumber(usage.output_tokens);
   const reportedTotal = asNonNegativeNumber(usage.total_tokens);
 
   return {
@@ -379,9 +378,9 @@ export function createFreebuffTokenTotals(
 export function createFreebuffDesktopTokenTotals(
   usage: JsonRecord,
 ): DailyTokenTotals {
-  const input = asNonNegativeNumber(usage.inputTokens);
-  const output = asNonNegativeNumber(usage.outputTokens);
   const cacheRead = asNonNegativeNumber(usage.cachedInputTokens);
+  const input = Math.max(asNonNegativeNumber(usage.inputTokens), cacheRead);
+  const output = asNonNegativeNumber(usage.outputTokens);
   const reportedTotal = asNonNegativeNumber(usage.totalTokens);
 
   return {
@@ -404,28 +403,6 @@ function getUsageEntries(message: JsonRecord): JsonRecord[] {
 
   if (codebuffUsage) {
     return [codebuffUsage];
-  }
-
-  const runState = asRecord(metadata?.runState);
-  const sessionState = asRecord(runState?.sessionState);
-  const mainAgentState = asRecord(sessionState?.mainAgentState);
-  const messageHistory = mainAgentState?.messageHistory;
-
-  if (Array.isArray(messageHistory)) {
-    const historyUsages: JsonRecord[] = [];
-
-    for (const historyEntry of messageHistory) {
-      const providerOptions = asRecord(asRecord(historyEntry)?.providerOptions);
-      const usage = asRecord(providerOptions?.usage);
-
-      if (usage) {
-        historyUsages.push(usage);
-      }
-    }
-
-    if (historyUsages.length > 0) {
-      return historyUsages;
-    }
   }
 
   const messageUsage = asRecord(message.usage);
@@ -469,9 +446,7 @@ function addFreebuffUsage(
 ) {
   const tokenTotals = createFreebuffTokenTotals(usage);
   const modelName =
-    asString(usage.model) ??
-    asString(message.model) ??
-    MIXED_FREEBUFF_MODEL;
+    asString(usage.model) ?? asString(message.model) ?? MIXED_FREEBUFF_MODEL;
 
   addFreebuffTokenTotals(
     totals,
@@ -493,7 +468,6 @@ function addFreebuffTokenTotals(
   tokenTotals: DailyTokenTotals,
   modelName?: string,
 ) {
-
   if (tokenTotals.total <= 0) {
     return;
   }
@@ -558,9 +532,7 @@ async function processFreebuffApiThread(
     }
 
     const modelName =
-      asString(usage.model) ??
-      asString(message.model) ??
-      MIXED_FREEBUFF_MODEL;
+      asString(usage.model) ?? asString(message.model) ?? MIXED_FREEBUFF_MODEL;
 
     addFreebuffTokenTotals(
       totals,
@@ -636,6 +608,7 @@ interface FreebuffDbThreadRow {
 
 interface FreebuffDbMessageRow {
   thread_id: string;
+  seq: number;
   metrics_json: string | null;
   ts: number | null;
 }
@@ -711,7 +684,7 @@ function queryFreebuffDatabase(databasePath: string): {
 
     const messages = database
       .prepare(
-        "SELECT thread_id, metrics_json, ts FROM messages WHERE role = 'assistant' AND metrics_json IS NOT NULL",
+        "SELECT thread_id, rowid AS seq, metrics_json, ts FROM messages WHERE role = 'assistant' AND metrics_json IS NOT NULL",
       )
       .all() as FreebuffDbMessageRow[];
 
@@ -739,6 +712,7 @@ async function processFreebuffDatabase(
   databasePath: string,
   start: Date,
   end: Date,
+  seenMessages?: Set<string>,
 ): Promise<{
   totals: DailyTotalsByDate;
   modelTotals: Map<string, ModelTokenTotals>;
@@ -758,9 +732,17 @@ async function processFreebuffDatabase(
   }
 
   for (const row of data.messages) {
-    if (!row.metrics_json) {
+    if (!row.metrics_json || row.metrics_json === "{}") {
       continue;
     }
+
+    const messageKey = `${row.thread_id}:${row.seq}`;
+
+    if (seenMessages?.has(messageKey)) {
+      continue;
+    }
+
+    seenMessages?.add(messageKey);
 
     const date = parseFreebuffTimestamp(row.ts);
 
@@ -816,6 +798,7 @@ export async function loadFreebuffRows(
   );
 
   if (databaseFiles.length > 0) {
+    const seenMessages = new Set<string>();
     const dbResults = new Array<
       Awaited<ReturnType<typeof processFreebuffDatabase>>
     >(databaseFiles.length);
@@ -824,7 +807,12 @@ export async function loadFreebuffRows(
       databaseFiles,
       fileConcurrency,
       async (file, index) => {
-        dbResults[index] = await processFreebuffDatabase(file, start, end);
+        dbResults[index] = await processFreebuffDatabase(
+          file,
+          start,
+          end,
+          seenMessages,
+        );
       },
     );
 
@@ -833,9 +821,7 @@ export async function loadFreebuffRows(
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
     }
-  }
-
-  if (files.length > 0) {
+  } else if (files.length > 0) {
     const results = new Array<Awaited<ReturnType<typeof processFreebuffFile>>>(
       files.length,
     );
@@ -849,9 +835,7 @@ export async function loadFreebuffRows(
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
     }
-  }
-
-  if (databaseFiles.length === 0 && files.length === 0) {
+  } else {
     const apiThreads = await getFreebuffApiThreads();
     const apiResults = new Array<
       Awaited<ReturnType<typeof processFreebuffApiThread>>

@@ -28,10 +28,10 @@ test("Freebuff token totals include cache fields", () => {
       cache_creation_input_tokens: 5,
     }),
     {
-      input: 110,
-      output: 25,
+      input: 100,
+      output: 20,
       cache: { input: 10, output: 5 },
-      total: 135,
+      total: 120,
     },
   );
 });
@@ -106,24 +106,10 @@ test("loadFreebuffRows reads assistant usage from all supported metadata paths",
       },
       {
         role: "assistant",
-        metadata: {
-          runState: {
-            sessionState: {
-              mainAgentState: {
-                messageHistory: [
-                  {
-                    providerOptions: {
-                      usage: {
-                        model: "model-c",
-                        input_tokens: 20,
-                        output_tokens: 5,
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          },
+        usage: {
+          model: "model-c",
+          input_tokens: 20,
+          output_tokens: 5,
         },
       },
     ]),
@@ -146,15 +132,15 @@ test("loadFreebuffRows reads assistant usage from all supported metadata paths",
 
     const day = summary.daily[0];
     assert.equal(formatLocalDate(day.date), "2026-02-18");
-    assert.equal(day.input, 170);
-    assert.equal(day.output, 40);
+    assert.equal(day.input, 160);
+    assert.equal(day.output, 35);
     assert.equal(day.cache.input, 10);
     assert.equal(day.cache.output, 5);
-    assert.equal(day.total, 210);
+    assert.equal(day.total, 195);
     assert.deepEqual(
       day.breakdown.map((entry) => [entry.name, entry.tokens.total]),
       [
-        ["model-a", 135],
+        ["model-a", 120],
         ["model-b", 50],
         ["model-c", 25],
       ],
@@ -431,3 +417,75 @@ test("loadFreebuffRows reads assistant usage from desktop-v2.db SQLite databases
   }
 });
 
+test("loadFreebuffRows deduplicates identical messages across multiple database files and skips empty metrics", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-dedup-test-"));
+  const proj1 = join(root, "projects", "proj-1");
+  const proj2 = join(root, "projects", "proj-2");
+  const db1Path = join(proj1, "desktop-v2.db");
+  const db2Path = join(proj2, "desktop-v2.db");
+  const originalConfigDir = process.env.FREEBUFF_CONFIG_DIR;
+  const originalDataDir = process.env.FREEBUFF_DATA_DIR;
+  const timestamp = Date.parse("2026-02-18T10:12:13.000Z");
+
+  await mkdir(proj1, { recursive: true });
+  await mkdir(proj2, { recursive: true });
+
+  const db1 = new Database(db1Path);
+  db1.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT);
+    CREATE TABLE messages (seq INTEGER PRIMARY KEY, thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model) VALUES ('t1', 'thread-model');
+    INSERT INTO messages (seq, thread_id, role, metrics_json, ts) VALUES
+      (1, 't1', 'assistant', '{"usage":{"inputTokens":100,"outputTokens":20,"cachedInputTokens":10,"totalTokens":120}}', ${timestamp}),
+      (2, 't1', 'assistant', '{}', ${timestamp + 1000});
+  `);
+  db1.close();
+
+  const db2 = new Database(db2Path);
+  db2.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT);
+    CREATE TABLE messages (seq INTEGER PRIMARY KEY, thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model) VALUES ('t1', 'thread-model');
+    INSERT INTO messages (seq, thread_id, role, metrics_json, ts) VALUES
+      (1, 't1', 'assistant', '{"usage":{"inputTokens":100,"outputTokens":20,"cachedInputTokens":10,"totalTokens":120}}', ${timestamp});
+  `);
+  db2.close();
+
+  process.env.FREEBUFF_CONFIG_DIR = root;
+  delete process.env.FREEBUFF_DATA_DIR;
+
+  try {
+    assert.equal(await isFreebuffAvailable(), true);
+
+    const summary = await loadFreebuffRows(
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-03-01T00:00:00.000Z"),
+    );
+
+    assert.equal(summary.provider, "freebuff");
+    assert.equal(summary.daily.length, 1);
+
+    const day = summary.daily[0];
+    assert.equal(formatLocalDate(day.date), "2026-02-18");
+    // Should count turn (t1, 1) once only, ignoring duplicate in db2 and ignoring empty metrics row (seq 2)
+    assert.equal(day.input, 100);
+    assert.equal(day.output, 20);
+    assert.equal(day.cache.input, 10);
+    assert.equal(day.cache.output, 0);
+    assert.equal(day.total, 120);
+  } finally {
+    if (originalConfigDir !== undefined) {
+      process.env.FREEBUFF_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.FREEBUFF_CONFIG_DIR;
+    }
+
+    if (originalDataDir !== undefined) {
+      process.env.FREEBUFF_DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.FREEBUFF_DATA_DIR;
+    }
+
+    await rm(root, { recursive: true, force: true });
+  }
+});
