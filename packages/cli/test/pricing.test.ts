@@ -772,6 +772,7 @@ test("publisher and namespace prefixes are stripped when matching pricing rules"
     ["deepseek/deepseek-v4-flash", 1.5],
     ["anthropic/claude-opus-4", 90],
     ["openrouter/openai/gpt-5.4", 17.5],
+    ["fbc/claude-haiku-5.5", 0.6],
   ] as const;
 
   for (const [model, expected] of cases) {

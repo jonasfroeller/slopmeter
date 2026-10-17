@@ -31,6 +31,76 @@ const DEFAULT_FREEBUFF_API_URL = "http://127.0.0.1:12382";
 const FREEBUFF_API_TIMEOUT_MS = 1_500;
 const MIXED_FREEBUFF_MODEL = "Mixed";
 
+function freebuffLegacyModelDigest(modelId: string): string {
+  const input = `freebuff-legacy-model:${modelId}`;
+  let h1 = 2166136261;
+  let h2 = 1523705862;
+
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+
+    h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ c, 1540483477) >>> 0;
+  }
+
+  return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
+const knownFreebuffModels: readonly string[] = [
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v4-flash-fast",
+  "deepseek/deepseek-v4.1-flash",
+  "deepseek/deepseek-v4.1-flash-fast",
+  "deepseek/deepseek-v4-pro",
+  "mimo/mimo-v2.5",
+  "mimo/mimo-v2.6-pro",
+  "mimo/mimo-v2.6-flash",
+  "upstage/solar-pro4",
+  "upstage/solar-mini4",
+  "z-ai/glm-5.2",
+  "z-ai/glm-5.3-flash",
+  "openai/gpt-5.6-luna",
+  "openai/gpt-6-luna",
+  "openai/gpt-6.1-sol",
+  "google/gemini-3.8-flash",
+  "google/gemini-4-argon",
+  "meta/muse-spark-1.2-contributor",
+  "meta/muse-spark-1.3-contributor",
+  "stealth/space-bunny-alpha",
+  "stealth/ox-alpha",
+  "fbc/claude-haiku-5.5",
+  "anthropic/claude-haiku-5.5",
+  "minimax/minimax-m3",
+  "anthropic/claude-fable-5.1",
+];
+
+const explicitFreebuffModelKeys: Readonly<Record<string, string>> = {
+  "m-79293c5b7d": "fbc/claude-haiku-5.5",
+  "m-61c26317cc": "mimo/mimo-v2.5",
+  "m-5b6a604eb6": "fbc/claude-haiku-5.5",
+  "m-02244092cb": "stealth/glyph-cluster",
+  "m-a273b5e513": "anthropic/laguna-s-2.1",
+};
+
+const freebuffModelKeyMap = new Map<string, string>();
+
+for (const modelId of knownFreebuffModels) {
+  freebuffModelKeyMap.set(
+    `m-${freebuffLegacyModelDigest(`key:${modelId}`).slice(0, 10)}`,
+    modelId,
+  );
+}
+
+for (const [key, modelId] of Object.entries(explicitFreebuffModelKeys)) {
+  freebuffModelKeyMap.set(key, modelId);
+}
+
+export function resolveFreebuffModelName(modelName: string): string {
+  const trimmed = modelName.trim();
+
+  return freebuffModelKeyMap.get(trimmed) ?? modelName;
+}
+
 export interface FreebuffUsage {
   input_tokens?: unknown;
   output_tokens?: unknown;
@@ -473,7 +543,7 @@ function addFreebuffTokenTotals(
   }
 
   const normalizedModelName = modelName
-    ? normalizeModelName(modelName)
+    ? normalizeModelName(resolveFreebuffModelName(modelName))
     : undefined;
 
   addDailyTokenTotals(totals, date, tokenTotals, normalizedModelName);
@@ -675,7 +745,7 @@ function queryFreebuffDatabase(databasePath: string): {
 
       for (const row of threadRows) {
         if (row.id && row.model) {
-          threads.set(row.id, row.model);
+          threads.set(row.id, resolveFreebuffModelName(row.model));
         }
       }
     } catch {

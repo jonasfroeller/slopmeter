@@ -13,6 +13,7 @@ import {
   isFreebuffAvailable,
   loadFreebuffRows,
   parseFreebuffTimestamp,
+  resolveFreebuffModelName,
 } from "../src/lib/freebuff";
 import { formatLocalDate } from "../src/lib/utils";
 
@@ -489,3 +490,108 @@ test("loadFreebuffRows deduplicates identical messages across multiple database 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("resolveFreebuffModelName maps catalog key hashes to canonical model IDs", () => {
+  assert.equal(
+    resolveFreebuffModelName("m-096e75164d"),
+    "deepseek/deepseek-v4-flash",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-00032eaeec"),
+    "mimo/mimo-v2.5",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-9a7e098cc1"),
+    "upstage/solar-pro4",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-cb71f819fe"),
+    "mimo/mimo-v2.6-pro",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-7e20df6765"),
+    "z-ai/glm-5.3-flash",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-5a5d0e255e"),
+    "openai/gpt-6-luna",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-22ff70c712"),
+    "stealth/space-bunny-alpha",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-127314bb39"),
+    "deepseek/deepseek-v4-flash-fast",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-79293c5b7d"),
+    "fbc/claude-haiku-5.5",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-02244092cb"),
+    "stealth/glyph-cluster",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-a273b5e513"),
+    "anthropic/laguna-s-2.1",
+  );
+  assert.equal(
+    resolveFreebuffModelName("unknown-model"),
+    "unknown-model",
+  );
+});
+
+test("loadFreebuffRows canonicalizes hashed model keys from database threads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-model-map-test-"));
+  const projectDir = join(root, "projects", "demo-project");
+  const dbPath = join(projectDir, "desktop-v2.db");
+  const originalConfigDir = process.env.FREEBUFF_CONFIG_DIR;
+  const originalDataDir = process.env.FREEBUFF_DATA_DIR;
+  const timestamp = Date.parse("2026-02-18T10:12:13.000Z");
+
+  await mkdir(projectDir, { recursive: true });
+
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT);
+    CREATE TABLE messages (seq INTEGER PRIMARY KEY, thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model) VALUES ('t1', 'm-096e75164d'), ('t2', 'deepseek/deepseek-v4-flash');
+    INSERT INTO messages (seq, thread_id, role, metrics_json, ts) VALUES
+      (1, 't1', 'assistant', '{"usage":{"inputTokens":100,"outputTokens":20,"cachedInputTokens":10,"totalTokens":120}}', ${timestamp}),
+      (2, 't2', 'assistant', '{"usage":{"inputTokens":50,"outputTokens":10,"cachedInputTokens":0,"totalTokens":60}}', ${timestamp});
+  `);
+  db.close();
+
+  process.env.FREEBUFF_CONFIG_DIR = root;
+  delete process.env.FREEBUFF_DATA_DIR;
+
+  try {
+    const summary = await loadFreebuffRows(
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-03-01T00:00:00.000Z"),
+    );
+
+    assert.equal(summary.daily.length, 1);
+    const day = summary.daily[0];
+    assert.deepEqual(
+      day.breakdown.map((entry) => [entry.name, entry.tokens.total]),
+      [["deepseek/deepseek-v4-flash", 180]],
+    );
+  } finally {
+    if (originalConfigDir !== undefined) {
+      process.env.FREEBUFF_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.FREEBUFF_CONFIG_DIR;
+    }
+
+    if (originalDataDir !== undefined) {
+      process.env.FREEBUFF_DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.FREEBUFF_DATA_DIR;
+    }
+
+    await rm(root, { recursive: true, force: true });
+  }
+});
+

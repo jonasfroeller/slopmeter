@@ -586,7 +586,31 @@ export const BUILT_IN_RULES: PricingRule[] = [
       cacheWritePerMillion: 3.75,
     },
   ),
-  ...["4.5", "4-5"].map((version) =>
+  ...["5.5", "5-5"].flatMap((version) => [
+    officialRule(
+      "Anthropic standard API pricing",
+      "https://www.anthropic.com/pricing",
+      {
+        model: `*claude*${version}*haiku*`,
+        inputPerMillion: 0.1,
+        outputPerMillion: 0.5,
+        cacheReadPerMillion: 0.01,
+        cacheWritePerMillion: 0.125,
+      },
+    ),
+    officialRule(
+      "Anthropic standard API pricing",
+      "https://www.anthropic.com/pricing",
+      {
+        model: `*claude*haiku*${version}*`,
+        inputPerMillion: 0.1,
+        outputPerMillion: 0.5,
+        cacheReadPerMillion: 0.01,
+        cacheWritePerMillion: 0.125,
+      },
+    ),
+  ]),
+  ...["4.5", "4-5"].flatMap((version) => [
     officialRule(
       "Anthropic standard API pricing",
       "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf",
@@ -598,7 +622,18 @@ export const BUILT_IN_RULES: PricingRule[] = [
         cacheWritePerMillion: 1.25,
       },
     ),
-  ),
+    officialRule(
+      "Anthropic standard API pricing",
+      "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf",
+      {
+        model: `*claude*haiku*${version}*`,
+        inputPerMillion: 1,
+        outputPerMillion: 5,
+        cacheReadPerMillion: 0.1,
+        cacheWritePerMillion: 1.25,
+      },
+    ),
+  ]),
   officialRule(
     "Anthropic standard API pricing",
     "https://www-cdn.anthropic.com/files/4zrzovbb/website/3684c2faafb97418665782cea0001f439f74b1d2.pdf",
