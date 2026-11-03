@@ -194,6 +194,17 @@ export const BUILT_IN_RULES: PricingRule[] = [
     },
   ),
   officialRule(
+    "OpenAI standard API pricing",
+    "https://developers.openai.com/api/docs/pricing",
+    {
+      model: "gpt-6.1-terra*",
+      inputPerMillion: 1,
+      outputPerMillion: 5,
+      cacheReadPerMillion: 0.05,
+      cacheWritePerMillion: 1.25,
+    },
+  ),
+  officialRule(
     "OpenAI GPT-5.6 Sol launch API pricing",
     "https://openai.com/index/gpt-5-6/",
     {

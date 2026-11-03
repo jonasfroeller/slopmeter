@@ -537,6 +537,14 @@ test("resolveFreebuffModelName maps catalog key hashes to canonical model IDs", 
     "anthropic/laguna-s-2.1",
   );
   assert.equal(
+    resolveFreebuffModelName("m-b2a427415d"),
+    "fbc/minimax-m3.1-flash",
+  );
+  assert.equal(
+    resolveFreebuffModelName("m-7d6e1b3ae0"),
+    "openai/gpt-6.1-terra",
+  );
+  assert.equal(
     resolveFreebuffModelName("unknown-model"),
     "unknown-model",
   );

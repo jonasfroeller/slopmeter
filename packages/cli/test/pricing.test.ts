@@ -765,6 +765,44 @@ test("GPT-5.6 Terra and Luna use their documented launch and reduced rates", () 
   }
 });
 
+test("GPT-6.1 Terra uses its documented standard rates", () => {
+  const context = createPricingContext("USD");
+  const priced = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "openai/gpt-6.1-terra",
+      input: 1_000_000,
+      output: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(priced.daily[0]?.cost?.amount, 6);
+
+  const cachedInput = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "openai/gpt-6.1-terra",
+      input: 1_000_000,
+      output: 0,
+      cacheInput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(cachedInput.daily[0]?.cost?.amount, 0.05);
+
+  const cacheWrite = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "openai/gpt-6.1-terra",
+      input: 0,
+      output: 0,
+      cacheOutput: 1_000_000,
+    }),
+    context,
+  );
+  assert.equal(cacheWrite.daily[0]?.cost?.amount, 1.25);
+});
+
 test("publisher and namespace prefixes are stripped when matching pricing rules", () => {
   const context = createPricingContext("USD");
   const cases = [
