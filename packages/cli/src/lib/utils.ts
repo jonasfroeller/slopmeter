@@ -819,20 +819,14 @@ export function getTopModel(
   };
 }
 
-function startOfDay(date: Date) {
-  const day = new Date(date);
-
-  day.setHours(0, 0, 0, 0);
-
-  return day;
+function getCalendarDay(date: Date) {
+  // Map local calendar dates through UTC so DST transitions cannot turn a
+  // 24-hour day into a 23- or 25-hour gap.
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function isConsecutiveDay(prevDate: Date, currDate: Date): boolean {
-  const prev = startOfDay(prevDate);
-  const curr = startOfDay(currDate);
-  const diff = curr.getTime() - prev.getTime();
-
-  return diff === ONE_DAY_MS;
+  return getCalendarDay(currDate) - getCalendarDay(prevDate) === ONE_DAY_MS;
 }
 
 export function computeLongestStreak(daily: DailyUsage[]): number {
@@ -862,15 +856,12 @@ export function computeCurrentStreak(daily: DailyUsage[], end: Date): number {
     return 0;
   }
 
-  const endDay = startOfDay(end);
+  const endDay = getCalendarDay(end);
   const lastEntry = daily[daily.length - 1];
-  const lastEntryDay = startOfDay(lastEntry.date);
+  const lastEntryDay = getCalendarDay(lastEntry.date);
 
-  // If the last active day isn't the end date, check if it's consecutive
-  if (
-    lastEntryDay.getTime() !== endDay.getTime() &&
-    !isConsecutiveDay(lastEntryDay, endDay)
-  ) {
+  // A streak stays current through the end of the day after its last entry.
+  if (lastEntryDay !== endDay && !isConsecutiveDay(lastEntry.date, end)) {
     return 0;
   }
 

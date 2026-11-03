@@ -13,6 +13,7 @@ import {
   addDailyTokenTotals,
   addModelTokenTotals,
   createUsageSummary,
+  formatLocalDate,
   getPositiveIntegerEnv,
   getRecentWindowStart,
   listFilesRecursive,
@@ -569,10 +570,12 @@ async function processFreebuffApiThread(
   totals: DailyTotalsByDate;
   modelTotals: Map<string, ModelTokenTotals>;
   recentModelTotals: Map<string, ModelTokenTotals>;
+  activityDates: Set<string>;
 }> {
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
+  const activityDates = new Set<string>();
   const recentStart = getRecentWindowStart(end, 30);
   const document = asRecord(
     await fetchFreebuffJson(
@@ -582,15 +585,13 @@ async function processFreebuffApiThread(
   );
 
   if (!document || !Array.isArray(document.messages)) {
-    return { totals, modelTotals, recentModelTotals };
+    return { totals, modelTotals, recentModelTotals, activityDates };
   }
 
   for (const rawMessage of document.messages) {
     const message = asRecord(rawMessage);
-    const metrics = asRecord(message?.metrics);
-    const usage = asRecord(metrics?.usage);
 
-    if (!message || message.role !== "assistant" || !usage) {
+    if (!message) {
       continue;
     }
 
@@ -600,6 +601,19 @@ async function processFreebuffApiThread(
       parseFreebuffTimestamp(message.created_at);
 
     if (!date || date < start || date > end) {
+      continue;
+    }
+
+    activityDates.add(formatLocalDate(date));
+
+    if (message.role !== "assistant") {
+      continue;
+    }
+
+    const metrics = asRecord(message.metrics);
+    const usage = asRecord(metrics?.usage);
+
+    if (!usage) {
       continue;
     }
 
@@ -617,7 +631,7 @@ async function processFreebuffApiThread(
     );
   }
 
-  return { totals, modelTotals, recentModelTotals };
+  return { totals, modelTotals, recentModelTotals, activityDates };
 }
 
 async function processFreebuffFile(
@@ -628,10 +642,12 @@ async function processFreebuffFile(
   totals: DailyTotalsByDate;
   modelTotals: Map<string, ModelTokenTotals>;
   recentModelTotals: Map<string, ModelTokenTotals>;
+  activityDates: Set<string>;
 }> {
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
+  const activityDates = new Set<string>();
   const recentStart = getRecentWindowStart(end, 30);
   let document: unknown;
 
@@ -641,19 +657,25 @@ async function processFreebuffFile(
         `Freebuff chat messages exceed ${maxBytes} bytes in ${filePath}. Increase ${envVarName} to process this file.`,
     });
   } catch {
-    return { totals, modelTotals, recentModelTotals };
+    return { totals, modelTotals, recentModelTotals, activityDates };
   }
 
   for (const rawMessage of getMessages(document)) {
     const message = asRecord(rawMessage);
 
-    if (!message || message.role !== "assistant") {
+    if (!message) {
       continue;
     }
 
     const date = getMessageDate(message, filePath);
 
     if (!date || date < start || date > end) {
+      continue;
+    }
+
+    activityDates.add(formatLocalDate(date));
+
+    if (message.role !== "assistant") {
       continue;
     }
 
@@ -670,7 +692,7 @@ async function processFreebuffFile(
     }
   }
 
-  return { totals, modelTotals, recentModelTotals };
+  return { totals, modelTotals, recentModelTotals, activityDates };
 }
 
 interface FreebuffDbThreadRow {
@@ -731,6 +753,7 @@ async function withDatabaseSnapshot<T>(
 function queryFreebuffDatabase(databasePath: string): {
   threads: Map<string, string>;
   messages: FreebuffDbMessageRow[];
+  activityDates: Set<string>;
 } {
   const database = new Database(databasePath, {
     readonly: true,
@@ -760,7 +783,20 @@ function queryFreebuffDatabase(databasePath: string): {
       )
       .all() as FreebuffDbMessageRow[];
 
-    return { threads, messages };
+    const activityRows = database
+      .prepare("SELECT ts FROM messages WHERE ts IS NOT NULL")
+      .all() as Array<{ ts: number | null }>;
+    const activityDates = new Set<string>();
+
+    for (const row of activityRows) {
+      const date = parseFreebuffTimestamp(row.ts);
+
+      if (date) {
+        activityDates.add(formatLocalDate(date));
+      }
+    }
+
+    return { threads, messages, activityDates };
   } finally {
     database.close();
   }
@@ -789,18 +825,33 @@ async function processFreebuffDatabase(
   totals: DailyTotalsByDate;
   modelTotals: Map<string, ModelTokenTotals>;
   recentModelTotals: Map<string, ModelTokenTotals>;
+  activityDates: Set<string>;
 }> {
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
   const recentStart = getRecentWindowStart(end, 30);
 
-  let data: { threads: Map<string, string>; messages: FreebuffDbMessageRow[] };
+  const activityDates = new Set<string>();
+  let data: {
+    threads: Map<string, string>;
+    messages: FreebuffDbMessageRow[];
+    activityDates: Set<string>;
+  };
 
   try {
     data = await loadFreebuffDatabaseData(databasePath);
   } catch {
-    return { totals, modelTotals, recentModelTotals };
+    return { totals, modelTotals, recentModelTotals, activityDates };
+  }
+
+  const startKey = formatLocalDate(start);
+  const endKey = formatLocalDate(end);
+
+  for (const dateKey of data.activityDates) {
+    if (dateKey >= startKey && dateKey <= endKey) {
+      activityDates.add(dateKey);
+    }
   }
 
   for (const row of data.messages) {
@@ -852,7 +903,7 @@ async function processFreebuffDatabase(
     );
   }
 
-  return { totals, modelTotals, recentModelTotals };
+  return { totals, modelTotals, recentModelTotals, activityDates };
 }
 
 export async function loadFreebuffRows(
@@ -864,6 +915,7 @@ export async function loadFreebuffRows(
   const totals: DailyTotalsByDate = new Map();
   const modelTotals = new Map<string, ModelTokenTotals>();
   const recentModelTotals = new Map<string, ModelTokenTotals>();
+  const activityDates = new Set<string>();
   const fileConcurrency = getPositiveIntegerEnv(
     FILE_PROCESS_CONCURRENCY_ENV,
     DEFAULT_FILE_PROCESS_CONCURRENCY,
@@ -892,6 +944,10 @@ export async function loadFreebuffRows(
       mergeDailyTotalsByDate(totals, result.totals);
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
+
+      for (const dateKey of result.activityDates) {
+        activityDates.add(dateKey);
+      }
     }
   } else if (files.length > 0) {
     const results = new Array<Awaited<ReturnType<typeof processFreebuffFile>>>(
@@ -906,6 +962,10 @@ export async function loadFreebuffRows(
       mergeDailyTotalsByDate(totals, result.totals);
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
+
+      for (const dateKey of result.activityDates) {
+        activityDates.add(dateKey);
+      }
     }
   } else {
     const apiThreads = await getFreebuffApiThreads();
@@ -925,7 +985,17 @@ export async function loadFreebuffRows(
       mergeDailyTotalsByDate(totals, result.totals);
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
+
+      for (const dateKey of result.activityDates) {
+        activityDates.add(dateKey);
+      }
     }
+  }
+
+  const displayValuesByDate = new Map<string, number>();
+
+  for (const dateKey of activityDates) {
+    displayValuesByDate.set(dateKey, 1);
   }
 
   return createUsageSummary(
@@ -934,5 +1004,6 @@ export async function loadFreebuffRows(
     modelTotals,
     recentModelTotals,
     end,
+    displayValuesByDate,
   );
 }

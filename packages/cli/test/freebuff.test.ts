@@ -418,6 +418,63 @@ test("loadFreebuffRows reads assistant usage from desktop-v2.db SQLite databases
   }
 });
 
+test("loadFreebuffRows counts activity-only days toward streaks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-activity-test-"));
+  const projectDir = join(root, "projects", "demo-project");
+  const dbPath = join(projectDir, "desktop-v2.db");
+  const originalConfigDir = process.env.FREEBUFF_CONFIG_DIR;
+  const originalDataDir = process.env.FREEBUFF_DATA_DIR;
+  const day1 = Date.parse("2026-02-18T12:00:00.000Z");
+  const day2 = day1 + 86_400_000;
+  const end = day2 + 86_400_000;
+
+  await mkdir(projectDir, { recursive: true });
+
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT);
+    CREATE TABLE messages (seq INTEGER PRIMARY KEY, thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model) VALUES ('t1', 'thread-model');
+    INSERT INTO messages (seq, thread_id, role, metrics_json, ts) VALUES
+      (1, 't1', 'assistant', '{"usage":{"inputTokens":100,"outputTokens":20,"totalTokens":120}}', ${day1}),
+      (2, 't1', 'user', '{}', ${day2});
+  `);
+  db.close();
+
+  process.env.FREEBUFF_CONFIG_DIR = root;
+  delete process.env.FREEBUFF_DATA_DIR;
+
+  try {
+    const summary = await loadFreebuffRows(new Date(day1 - 86_400_000), new Date(end));
+    const activityDateKey = formatLocalDate(new Date(day2));
+    const activityDay = summary.daily.find(
+      (day) => formatLocalDate(day.date) === activityDateKey,
+    );
+
+    assert.equal(summary.daily.length, 2);
+    assert.ok(activityDay);
+    assert.equal(activityDay.total, 0);
+    assert.equal(activityDay.displayValue, 1);
+    assert.equal(activityDay.breakdown.length, 0);
+    assert.equal(summary.insights?.streaks.longest, 2);
+    assert.equal(summary.insights?.streaks.current, 2);
+  } finally {
+    if (originalConfigDir !== undefined) {
+      process.env.FREEBUFF_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.FREEBUFF_CONFIG_DIR;
+    }
+
+    if (originalDataDir !== undefined) {
+      process.env.FREEBUFF_DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.FREEBUFF_DATA_DIR;
+    }
+
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("loadFreebuffRows deduplicates identical messages across multiple database files and skips empty metrics", async () => {
   const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-dedup-test-"));
   const proj1 = join(root, "projects", "proj-1");
