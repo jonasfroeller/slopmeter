@@ -475,6 +475,59 @@ test("loadFreebuffRows counts activity-only days toward streaks", async () => {
   }
 });
 
+test("loadFreebuffRows counts cloud thread prompts as activity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-cloud-test-"));
+  const projectDir = join(root, "projects", "demo-project");
+  const dbPath = join(projectDir, "desktop-v2.db");
+  const originalConfigDir = process.env.FREEBUFF_CONFIG_DIR;
+  const originalDataDir = process.env.FREEBUFF_DATA_DIR;
+  const day1 = Date.parse("2026-02-18T12:00:00.000Z");
+  const day2 = day1 + 86_400_000;
+
+  await mkdir(projectDir, { recursive: true });
+
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT, created_at INTEGER, last_prompt_at INTEGER);
+    CREATE TABLE messages (seq INTEGER PRIMARY KEY, thread_id TEXT, role TEXT, metrics_json TEXT, ts INTEGER);
+    INSERT INTO threads (id, model, created_at, last_prompt_at)
+      VALUES ('cloud-1', 'thread-model', ${day1}, ${day2});
+  `);
+  db.close();
+
+  process.env.FREEBUFF_CONFIG_DIR = root;
+  delete process.env.FREEBUFF_DATA_DIR;
+
+  try {
+    const summary = await loadFreebuffRows(new Date(day1 - 86_400_000), new Date(day2));
+
+    assert.equal(summary.daily.length, 2);
+    assert.deepEqual(
+      summary.daily.map((day) => [day.total, day.displayValue]),
+      [
+        [0, 1],
+        [0, 1],
+      ],
+    );
+    assert.equal(summary.insights?.streaks.longest, 2);
+    assert.equal(summary.insights?.streaks.current, 2);
+  } finally {
+    if (originalConfigDir !== undefined) {
+      process.env.FREEBUFF_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.FREEBUFF_CONFIG_DIR;
+    }
+
+    if (originalDataDir !== undefined) {
+      process.env.FREEBUFF_DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.FREEBUFF_DATA_DIR;
+    }
+
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("loadFreebuffRows deduplicates identical messages across multiple database files and skips empty metrics", async () => {
   const root = await mkdtemp(join(tmpdir(), "slopmeter-freebuff-dedup-test-"));
   const proj1 = join(root, "projects", "proj-1");

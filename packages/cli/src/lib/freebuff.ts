@@ -796,6 +796,47 @@ function queryFreebuffDatabase(databasePath: string): {
       }
     }
 
+    try {
+      // Cloud threads can keep their messages server-side, leaving the local
+      // messages table empty. The thread timestamps still prove activity.
+      const threadColumns = new Set(
+        (
+          database.prepare("PRAGMA table_info(threads)").all() as Array<{
+            name: string;
+          }>
+        ).map((column) => column.name),
+      );
+      const timestampColumns = ["created_at", "last_prompt_at"].filter(
+        (column) => threadColumns.has(column),
+      );
+
+      if (timestampColumns.includes("last_prompt_at")) {
+        const threadActivityRows = database
+          .prepare(
+            `SELECT ${timestampColumns.join(", ")} FROM threads WHERE last_prompt_at IS NOT NULL`,
+          )
+          .all() as Array<Record<string, unknown>>;
+
+        for (const row of threadActivityRows) {
+          const lastPrompt = parseFreebuffTimestamp(row.last_prompt_at);
+
+          if (!lastPrompt) {
+            continue;
+          }
+
+          activityDates.add(formatLocalDate(lastPrompt));
+
+          const createdAt = parseFreebuffTimestamp(row.created_at);
+
+          if (createdAt) {
+            activityDates.add(formatLocalDate(createdAt));
+          }
+        }
+      }
+    } catch {
+      // Older schemas may not have thread activity timestamps.
+    }
+
     return { threads, messages, activityDates };
   } finally {
     database.close();
