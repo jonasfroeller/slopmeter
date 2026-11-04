@@ -492,7 +492,7 @@ test("bundled rules only carry first-party source URLs", () => {
 
     assert.match(
       rule.sourceUrl ?? "",
-      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io|open\.bigmodel\.cn|console\.upstage\.ai|build\.nvidia\.com|cloud\.tencent\.com|ant-ling\.com)\//,
+      /^https:\/\/(?:openai\.com|developers\.openai\.com|platform\.openai\.com|www\.anthropic\.com|www-cdn\.anthropic\.com|ai\.google\.dev|cloud\.google\.com|docs\.x\.ai|api-docs\.deepseek\.com|mimo\.mi\.com|www\.kimi\.ai|platform\.kimi\.ai|dev\.meta\.ai|help\.aliyun\.com|platform\.minimax\.io|www\.minimax\.io|open\.bigmodel\.cn|console\.upstage\.ai|build\.nvidia\.com|cloud\.tencent\.com|ant-ling\.com|vercel\.com)\//,
       rule.model,
     );
     assert.doesNotMatch(
@@ -518,6 +518,51 @@ test("unverified publisher or marketplace aliases remain unknown", () => {
 
     assert.equal(priced.daily[0]?.cost?.coverage, "unknown", model);
   }
+});
+
+test("Space Bunny Alpha uses MiniMax M3.1 Flash rates", () => {
+  const context = createPricingContext("USD");
+
+  for (const model of [
+    "minimax-m3.1-flash",
+    "fbc/minimax-m3.1-flash",
+    "stealth/space-bunny-alpha",
+  ]) {
+    const priced = priceUsageSummary(
+      createSummary({
+        provider: "freebuff",
+        model,
+        input: 1_000_000,
+        output: 1_000_000,
+      }),
+      context,
+    );
+    const cost = priced.daily[0]?.cost;
+
+    assert.ok(cost);
+    assert.ok(Math.abs(cost.amount - 0.75) < 1e-12, model);
+    assert.equal(cost.coverage, "complete", model);
+    assert.equal(cost.basis, "estimated", model);
+  }
+});
+
+test("Glyph Cluster is free during its stealth preview", () => {
+  const priced = priceUsageSummary(
+    createSummary({
+      provider: "freebuff",
+      model: "stealth/glyph-cluster",
+      date: "2026-10-11T12:00:00",
+    }),
+    createPricingContext("USD"),
+  );
+  const cost = priced.daily[0]?.cost;
+
+  assert.ok(cost);
+  assert.equal(cost.amount, 0);
+  assert.equal(cost.basis, "free");
+  assert.equal(cost.coverage, "complete");
+  assert.equal(cost.unpricedTokens, 0);
+  assert.equal(cost.pricedTokens, 1_500);
 });
 
 test("verified standard rates and effective dates are used", () => {

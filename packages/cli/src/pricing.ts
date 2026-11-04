@@ -1098,6 +1098,22 @@ export const BUILT_IN_RULES: PricingRule[] = [
     },
   ),
 
+  // MiniMax M3.1 Flash standard API pricing. Space Bunny Alpha was the
+  // stealth codename for this model before MiniMax revealed it.
+  ...["*minimax-m3.1*", "*space-bunny-alpha*"].map((model) =>
+    officialRule(
+      "MiniMax M3.1 Flash standard API pricing",
+      "https://www.minimax.io/blog/minimax-m31f",
+      {
+        model,
+        inputPerMillion: 0.15,
+        outputPerMillion: 0.6,
+        cacheReadPerMillion: 0.015,
+        cacheWritePerMillion: null,
+      },
+    ),
+  ),
+
   // MiniMax standard API pricing.
   officialRule(
     "MiniMax standard API pricing",
@@ -1255,6 +1271,20 @@ export const BUILT_IN_RULES: PricingRule[] = [
       outputPerMillion: 0.2,
       cacheReadPerMillion: 0.005,
       cacheWritePerMillion: null,
+    },
+  ),
+
+  // Glyph Cluster is free on Vercel AI Gateway during its stealth preview.
+  officialRule(
+    "Vercel AI Gateway stealth preview pricing",
+    "https://vercel.com/ai-gateway/models/glyph-cluster",
+    {
+      model: "*glyph-cluster*",
+      inputPerMillion: 0,
+      outputPerMillion: 0,
+      cacheReadPerMillion: 0,
+      cacheWritePerMillion: 0,
+      effectiveFrom: "2026-10-07",
     },
   ),
 
