@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type { UsageSummary } from "../interfaces";
 import {
   DEFAULT_MAX_JSONL_RECORD_BYTES,
@@ -48,6 +48,10 @@ interface CodexEventPayload {
   model?: string;
   model_name?: string;
   metadata?: { model?: string };
+  forked_from_id?: string;
+  parent_thread_id?: string;
+  thread_source?: string;
+  source?: { subagent?: unknown };
 }
 
 interface CodexEventEntry {
@@ -212,12 +216,41 @@ function getCodexHome() {
 
 async function getCodexFiles() {
   const codexHome = getCodexHome();
+  const roots = [
+    join(codexHome, "sessions"),
+    join(codexHome, "archived_sessions"),
+  ];
+  const discovered = (
+    await Promise.all(
+      roots.flatMap((root) => [
+        listFilesRecursive(root, ".jsonl"),
+        listFilesRecursive(root, ".jsonl.zst"),
+      ]),
+    )
+  ).flat();
+  const filesBySession = new Map<string, string>();
 
-  return listFilesRecursive(join(codexHome, "sessions"), ".jsonl");
+  for (const file of discovered) {
+    const sessionKey = basename(file).replace(/\.zst$/, "");
+    const existing = filesBySession.get(sessionKey);
+
+    if (!existing || (existing.endsWith(".zst") && !file.endsWith(".zst"))) {
+      filesBySession.set(sessionKey, file);
+    }
+  }
+
+  return [...filesBySession.values()].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 export function isCodexAvailable() {
-  return existsSync(join(getCodexHome(), "sessions"));
+  const codexHome = getCodexHome();
+
+  return (
+    existsSync(join(codexHome, "sessions")) ||
+    existsSync(join(codexHome, "archived_sessions"))
+  );
 }
 
 function readJsonString(source: string, start: number) {
@@ -280,7 +313,7 @@ function skipPrimitive(source: string, start: number) {
 
 function classifyCodexRecord(
   source: string,
-): JsonlRecordDecision<"turn_context" | "token_count"> {
+): JsonlRecordDecision<"turn_context" | "token_count" | "session_meta"> {
   const stack: JsonContext[] = [];
   let topLevelType: string | undefined;
 
@@ -372,6 +405,10 @@ function classifyCodexRecord(
 
             if (value.value === "turn_context") {
               return { kind: "keep", classification: "turn_context" };
+            }
+
+            if (value.value === "session_meta") {
+              return { kind: "keep", classification: "session_meta" };
             }
 
             if (value.value !== "event_msg") {
@@ -498,14 +535,18 @@ async function processCodexFile(
   const recentModelTotals = new Map<string, ModelTokenTotals>();
   let previousTotals: CodexNormalizedUsage | null = null;
   let currentModel: string | undefined;
+  let inheritedBaselinePending = false;
 
   let skippedOversizedIrrelevantRecords = 0;
 
-  for await (const record of readJsonlRecords<"turn_context" | "token_count">(
+  for await (const record of readJsonlRecords<
+    "turn_context" | "token_count" | "session_meta"
+  >(
     filePath,
     {
       classificationPrefixBytes: CLASSIFICATION_PREFIX_BYTES,
       classify: classifyCodexRecord,
+      compression: filePath.endsWith(".zst") ? "zstd" : undefined,
       maxRecordBytes,
       onSkippedOversizedRecord: () => {
         skippedOversizedIrrelevantRecords += 1;
@@ -522,6 +563,17 @@ async function processCodexFile(
       continue;
     }
 
+    if (record.classification === "session_meta") {
+      const payload = entry.payload;
+      inheritedBaselinePending = Boolean(
+        payload?.forked_from_id ||
+          payload?.parent_thread_id ||
+          payload?.thread_source === "subagent" ||
+          payload?.source?.subagent,
+      );
+      continue;
+    }
+
     const extractedModel = extractCodexModel(entry.payload);
 
     if (record.classification === "turn_context") {
@@ -535,6 +587,12 @@ async function processCodexFile(
     let rawUsage: CodexNormalizedUsage | null = null;
 
     if (totalUsage) {
+      if (inheritedBaselinePending) {
+        inheritedBaselinePending = false;
+        previousTotals = totalUsage;
+        continue;
+      }
+
       rawUsage = didCodexTotalsRollback(totalUsage, previousTotals)
         ? (lastUsage ?? totalUsage)
         : subtractCodexUsage(totalUsage, previousTotals);

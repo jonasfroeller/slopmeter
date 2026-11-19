@@ -990,16 +990,22 @@ export async function loadFreebuffRows(
         activityDates.add(dateKey);
       }
     }
-  } else if (files.length > 0) {
-    const results = new Array<Awaited<ReturnType<typeof processFreebuffFile>>>(
-      files.length,
-    );
+  }
+
+  // Desktop databases and CLI chat files are separate stores: the Desktop app
+  // keeps cloud thread activity with no local messages, while the CLI writes
+  // assistant usage only to chat-messages.json. Reading one source hid days
+  // that exist solely in the other, so both are merged.
+  if (files.length > 0) {
+    const fileResults = new Array<
+      Awaited<ReturnType<typeof processFreebuffFile>>
+    >(files.length);
 
     await runWithConcurrency(files, fileConcurrency, async (file, index) => {
-      results[index] = await processFreebuffFile(file, start, end);
+      fileResults[index] = await processFreebuffFile(file, start, end);
     });
 
-    for (const result of results) {
+    for (const result of fileResults) {
       mergeDailyTotalsByDate(totals, result.totals);
       mergeModelTotals(modelTotals, result.modelTotals);
       mergeModelTotals(recentModelTotals, result.recentModelTotals);
@@ -1008,7 +1014,9 @@ export async function loadFreebuffRows(
         activityDates.add(dateKey);
       }
     }
-  } else {
+  }
+
+  if (databaseFiles.length === 0 && files.length === 0) {
     const apiThreads = await getFreebuffApiThreads();
     const apiResults = new Array<
       Awaited<ReturnType<typeof processFreebuffApiThread>>

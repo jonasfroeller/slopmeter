@@ -667,8 +667,12 @@ function getSectionLayout(
   const inlineTitleMaxWidth = headerInputX - leftColumnX - 16;
   const titleOverflow =
     estimateTextWidth(title, titleFontSize) > inlineTitleMaxWidth;
+  // SVG text is measured by the viewer, so keep a conservative right margin.
+  // Long merged provider lists otherwise accumulate estimate error and clip
+  // the final provider name at the canvas edge.
+  const titleWrapWidth = width - leftColumnX * 2 - 64;
   const titleLines = titleOverflow
-    ? wrapText(title, width - leftColumnX * 2, titleFontSize)
+    ? wrapText(title, titleWrapWidth, titleFontSize)
     : [title];
   const titleY = titleOverflow
     ? topMetricHeight + 8

@@ -1,6 +1,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { createZstdDecompress } from "node:zlib";
 import type {
   CostBasis,
   DailyUsage,
@@ -94,6 +95,7 @@ export type JsonlRecordDecision<TClassification> =
 
 interface ReadJsonlRecordsOptions<TClassification> {
   classificationPrefixBytes?: number;
+  compression?: "zstd";
   classify?: (prefix: string) => JsonlRecordDecision<TClassification>;
   maxRecordBytes?: number;
   onSkippedOversizedRecord?: (record: {
@@ -462,7 +464,10 @@ export async function* readJsonlRecords<TClassification = void>(
   const classify = options.classify ?? keepAllJsonlRecords<TClassification>;
   const oversizedErrorMessage =
     options.oversizedErrorMessage ?? defaultOversizedJsonlRecordMessage;
-  const stream = createReadStream(filePath);
+  const stream =
+    options.compression === "zstd"
+      ? createReadStream(filePath).pipe(createZstdDecompress())
+      : createReadStream(filePath);
   let lineNumber = 0;
   let lineBytesSeen = 0;
   let retainedBytes = 0;
